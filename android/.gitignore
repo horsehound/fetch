@@ -1,0 +1,11 @@
+.gradle/
+.kotlin/
+build/
+local.properties
+.idea/
+*.iml
+*.jks
+*.keystore
+# left behind by ci/device-test.sh
+/screens/
+/instrument.txt

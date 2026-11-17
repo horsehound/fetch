@@ -5,7 +5,7 @@
 <h1 align="center">Fetch</h1>
 
 <p align="center">
-  Move text, pictures and files between your iPhone and your Windows, macOS and Linux computers.<br>
+  Move text, pictures and files between your iPhone or Android phone and your Windows, macOS and Linux computers.<br>
   One feed, live on every device, that cleans up after itself. You host it yourself.
 </p>
 
@@ -15,6 +15,7 @@ The parts:
 - **Desktop app** (`desktop/`): for Windows, macOS and Linux. A hotkey pops up a small Throw box; paste, hit Throw, and it uploads in the background. Its full window is the web page.
 - **Web page**: the same feed in any browser. Nothing to install.
 - **iPhone app** (`Sources/`, `Share/`): the feed, a Paste button, a photo picker, and "Fetch" in the share sheet.
+- **Android app** (`android/`): the same app for Android phones.
 
 Unpinned items delete themselves after 7 days. Pin what you want to keep.
 
@@ -157,6 +158,38 @@ Using it:
 
 The phone has to be able to reach the hub. A hub on your home network needs the same Wi-Fi, or a VPN such as Tailscale or WireGuard when you're out. A hub on a VPS with a domain works from anywhere.
 
+## 4. Android
+
+Every push also builds `Fetch.apk` and publishes it in the [releases](../../releases). It runs on Android 10 and later and asks for no permissions.
+
+1. On the phone, download `Fetch.apk` from the latest [release](../../releases/latest) and open it. The first time, Android asks whether your browser may install apps; allow it.
+2. Open Fetch and enter the hub address and token, exactly as on the iPhone.
+
+It works like the iPhone app:
+
+- **Paste** sends the clipboard: text, a link or a copied picture.
+- **Photos** sends up to 20 pictures at once. HEIC photos are converted to JPEG so the other devices can open them.
+- **Tap text** or **a picture** to copy it. The arrow saves a picture to your gallery (`Pictures/Fetch`) and any other file to `Downloads`.
+- **Share → Fetch** from the gallery, the browser, a file manager or any other app.
+- Swipe left to delete, right to pin. A long press lists everything you can do with an item.
+
+### Updates that install over the old version
+
+Android only installs an update on top of the app when both were signed with the same key. Out of the box every build is signed with a throwaway key, so a newer `Fetch.apk` has to replace the app: uninstall, install, enter the hub details again.
+
+To get updates that simply install, give your repo a key of its own, once. `keytool` comes with Java; `gh` is the GitHub command line.
+
+```sh
+keytool -genkeypair -keystore fetch.jks -alias fetch -keyalg RSA -keysize 2048 -validity 10000 \
+  -storepass "choose-a-password" -dname "CN=Fetch"
+base64 -w0 fetch.jks | gh secret set ANDROID_KEYSTORE_BASE64
+gh secret set ANDROID_KEYSTORE_PASSWORD --body "choose-a-password"
+```
+
+Without `gh`, add the same two secrets under **Settings → Secrets and variables → Actions**. Keep `fetch.jks` somewhere safe: a build signed with a different key can't update the app either.
+
+From the next build on, every `Fetch.apk` updates the one before it, and [Obtainium](https://github.com/ImranR98/Obtainium) can watch this repo and offer new versions on the phone.
+
 ## API
 
 Everything is plain HTTP with `Authorization: Bearer <token>`.
@@ -187,4 +220,10 @@ FETCH_HUB_BIN=../hub/fetch npm test             # its unit tests
 FETCH_HUB_BIN=../hub/fetch xvfb-run -a npm run test:e2e   # the real app against a real hub (Linux)
 ```
 
-Everything is built by `.github/workflows/build.yml`: the hub on Linux, the desktop app on Windows, macOS and Linux runners, and the iPhone app on a macOS runner (`xcodegen generate` creates the Xcode project from `project.yml`; the result is packaged unsigned for SideStore). Fork the repo and the same workflow builds your own copies.
+```sh
+cd android
+./gradlew testDebugUnitTest assembleDebug        # the Android app; needs a JDK (17+) and the Android SDK
+./gradlew assembleDebug assembleDebugAndroidTest && ci/device-test.sh   # the real app on a phone or emulator against a real hub
+```
+
+Everything is built by `.github/workflows/build.yml`: the hub on Linux, the desktop app on Windows, macOS and Linux runners, the Android app on Linux, and the iPhone app on a macOS runner (`xcodegen generate` creates the Xcode project from `project.yml`; the result is packaged unsigned for SideStore). `.github/workflows/android-test.yml` runs the Android app on an emulator whenever `android/` changes. Fork the repo and the same workflow builds your own copies.
