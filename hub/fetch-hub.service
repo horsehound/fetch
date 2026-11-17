@@ -1,0 +1,21 @@
+# /etc/systemd/system/fetch-hub.service
+#   install -m 755 fetch-linux-amd64 /usr/local/bin/fetch
+#   systemctl daemon-reload && systemctl enable --now fetch-hub
+#   journalctl -u fetch-hub | grep token     # the token to enter on each device
+[Unit]
+Description=Fetch hub
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/fetch serve -addr :8787 -data /var/lib/fetch-hub
+StateDirectory=fetch-hub
+DynamicUser=yes
+Restart=on-failure
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

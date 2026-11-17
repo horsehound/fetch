@@ -1,0 +1,495 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>fetch</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7'/%3E%3Ccircle cx='16' cy='16' r='8' fill='%23fff'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #f7f7f5; --card: #fff; --fg: #121212; --muted: #74746f; --line: #e3e3de;
+    --inverse-bg: #121212; --inverse-fg: #fff; --danger: #b3261e;
+    --mono: ui-monospace, "JetBrains Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d0d0d; --card: #151515; --fg: #ededea; --muted: #8a8a85; --line: #272727;
+      --inverse-bg: #ededea; --inverse-fg: #0d0d0d; --danger: #f2b8b5;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  button, textarea, input { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+  [hidden] { display: none !important; }
+
+  main { max-width: 720px; margin: 0 auto; padding: 20px 16px 96px; }
+
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 4px 2px 16px; }
+  .mark { font: 600 20px/1 var(--mono); letter-spacing: -0.02em; }
+  .status { font: 12px/1 var(--mono); color: var(--muted); display: flex; align-items: center; gap: 7px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+  .dot.live { background: var(--fg); }
+
+  .composer { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 12px 10px; }
+  .composer textarea {
+    display: block; width: 100%; min-height: 24px; max-height: 40vh; resize: none;
+    border: 0; background: transparent; outline: none; padding: 2px;
+  }
+  .composer textarea::placeholder { color: var(--muted); }
+  .composer .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; }
+  .hint { font: 12px/1.3 var(--mono); color: var(--muted); }
+  .btns { display: flex; gap: 8px; flex: none; }
+  .btn {
+    border: 1px solid var(--line); background: transparent; border-radius: 8px;
+    padding: 6px 12px; font-size: 14px; white-space: nowrap;
+  }
+  .btn:hover { border-color: var(--fg); }
+  .btn.primary { background: var(--inverse-bg); color: var(--inverse-fg); border-color: var(--inverse-bg); }
+  .btn.primary:disabled { opacity: 0.35; cursor: default; }
+
+  .feed { list-style: none; margin: 20px 0 0; padding: 0; display: grid; gap: 10px; }
+  .item { background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .item.pinned { border-color: var(--fg); }
+
+  .text {
+    display: block; width: 100%; text-align: left; border: 0; background: transparent;
+    padding: 12px 14px 4px; white-space: pre-wrap; overflow-wrap: anywhere; cursor: copy;
+  }
+  .text.clamped { max-height: 13.5em; overflow: hidden; -webkit-mask-image: linear-gradient(#000 70%, transparent); mask-image: linear-gradient(#000 70%, transparent); }
+  .text.code { font: 13px/1.5 var(--mono); }
+
+  .shot { display: block; background: var(--bg); border-bottom: 1px solid var(--line); text-align: center; }
+  .shot img { display: block; max-width: 100%; max-height: 420px; margin: 0 auto; }
+
+  .file { display: flex; align-items: center; gap: 12px; padding: 12px 14px 4px; min-width: 0; }
+  .file .ext {
+    flex: none; min-width: 44px; padding: 8px 6px; border: 1px solid var(--line); border-radius: 6px;
+    font: 600 11px/1 var(--mono); text-align: center; text-transform: uppercase;
+  }
+  .file .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file .size { font: 12px/1.4 var(--mono); color: var(--muted); }
+
+  .meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 8px 8px 14px; }
+  .from { font: 12px/1.3 var(--mono); color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .actions { display: flex; flex: none; }
+  .act {
+    border: 0; background: transparent; border-radius: 6px; padding: 4px 8px;
+    font-size: 13px; color: var(--muted); text-decoration: none;
+  }
+  .act:hover { color: var(--fg); background: var(--bg); }
+  .act.danger:hover { color: var(--danger); }
+  .act.on { color: var(--fg); font-weight: 600; }
+
+  .empty { margin-top: 56px; text-align: center; color: var(--muted); }
+  .empty b { display: block; color: var(--fg); font-weight: 600; margin-bottom: 4px; }
+
+  footer { margin-top: 28px; font: 12px/1.7 var(--mono); color: var(--muted); text-align: center; }
+  footer button { border: 0; background: none; padding: 0; color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+  footer button:hover { color: var(--fg); }
+
+  .toast {
+    position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%);
+    background: var(--inverse-bg); color: var(--inverse-fg); border-radius: 999px;
+    padding: 8px 16px; font-size: 14px; max-width: calc(100vw - 32px);
+    opacity: 0; pointer-events: none; transition: opacity 0.15s;
+  }
+  .toast.show { opacity: 1; }
+
+  .drop {
+    position: fixed; inset: 12px; border: 2px dashed var(--fg); border-radius: 16px;
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    display: grid; place-items: center; font: 600 18px/1 var(--mono); z-index: 5;
+  }
+
+  .login { position: fixed; inset: 0; background: var(--bg); display: grid; place-items: center; padding: 16px; z-index: 10; }
+  .login form { width: min(340px, 100%); display: grid; gap: 12px; }
+  .login p { margin: 0; color: var(--muted); }
+  .login input { border: 1px solid var(--line); background: var(--card); border-radius: 8px; padding: 10px 12px; font-family: var(--mono); }
+  .login .err { color: var(--danger); min-height: 1.5em; }
+
+  @media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <span class="mark">fetch</span>
+    <span class="status"><span class="dot" id="dot"></span><span id="status">connecting</span></span>
+  </header>
+
+  <section class="composer">
+    <textarea id="draft" rows="1" placeholder="Type or paste something to send" aria-label="Text to send"></textarea>
+    <div class="row">
+      <span class="hint" id="hint">Enter sends · Ctrl+V anywhere sends your clipboard · drop files</span>
+      <span class="btns">
+        <button class="btn" id="attach" type="button">Add files</button>
+        <button class="btn primary" id="send" type="button" disabled>Send</button>
+      </span>
+    </div>
+    <input id="picker" type="file" multiple hidden>
+  </section>
+
+  <ul class="feed" id="feed" aria-live="polite"></ul>
+  <div class="empty" id="empty" hidden><b>Nothing here yet</b>Send something from any device and it shows up on all of them.</div>
+
+  <footer>
+    <div id="policy"></div>
+    <div>This device shows up as <button id="rename" type="button"></button> · <button id="clear" type="button">Clear unpinned</button></div>
+  </footer>
+</main>
+
+<div class="toast" id="toast" role="status"></div>
+<div class="drop" id="drop" hidden>Drop to send</div>
+
+<div class="login" id="login" hidden>
+  <form id="loginForm">
+    <span class="mark">fetch</span>
+    <p>Enter the access token the hub printed when it started.</p>
+    <input id="token" type="password" autocomplete="current-password" placeholder="token" aria-label="Access token" required>
+    <button class="btn primary" type="submit">Unlock</button>
+    <div class="err" id="loginErr" role="alert"></div>
+  </form>
+</div>
+
+<script>
+(() => {
+'use strict';
+const $ = (id) => document.getElementById(id);
+
+function el(tag, props, ...kids) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(props || {})) {
+    if (k === 'class') n.className = v;
+    else if (k === 'text') n.textContent = v;
+    else if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
+    else n.setAttribute(k, v);
+  }
+  n.append(...kids);
+  return n;
+}
+
+// ---- this device's name ----
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+};
+function guessDevice() {
+  const ua = navigator.userAgent;
+  if (/iPhone/.test(ua)) return 'iPhone';
+  if (/Android/.test(ua)) return 'Android';
+  if (/Windows/.test(ua)) return 'Windows PC';
+  if (/Mac OS X/.test(ua)) return 'Mac';
+  if (/Linux/.test(ua)) return 'Linux laptop';
+  return 'Browser';
+}
+let device = store.get('fetch.device') || guessDevice();
+
+// ---- talking to the hub ----
+async function api(path, opts = {}) {
+  const headers = Object.assign({ 'X-Device': encodeURIComponent(device) }, opts.headers);
+  let res;
+  try {
+    res = await fetch(path, Object.assign({}, opts, { headers }));
+  } catch {
+    throw new Error('Cannot reach the hub');
+  }
+  if (res.status === 401) { showLogin(); throw new Error('Locked'); }
+  if (!res.ok) throw new Error((await res.text()).trim() || 'The hub answered ' + res.status);
+  return res;
+}
+
+let toastTimer;
+function toast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 1800);
+}
+const fail = (e) => { if (e.message !== 'Locked') toast(e.message); };
+
+// ---- sending ----
+let sending = 0;
+function track(promise) {
+  sending++; paintStatus();
+  return promise.catch(fail).finally(() => { sending--; paintStatus(); });
+}
+function sendText(text) {
+  if (!text.trim()) return Promise.resolve();
+  return track(api('/api/items', {
+    method: 'POST', headers: { 'Content-Type': 'text/plain; charset=utf-8' }, body: text,
+  }));
+}
+function sendFile(file, keepName = true) {
+  // Clipboard images all arrive as "image.png"; let the hub give those a dated name.
+  const q = keepName && file.name ? '?name=' + encodeURIComponent(file.name) : '';
+  return track(api('/api/items' + q, {
+    method: 'POST', headers: { 'Content-Type': file.type || 'application/octet-stream' }, body: file,
+  }));
+}
+
+const draft = $('draft');
+function fitDraft() {
+  draft.style.height = 'auto';
+  draft.style.height = draft.scrollHeight + 'px';
+  $('send').disabled = !draft.value.trim();
+}
+function sendDraft() {
+  const text = draft.value;
+  if (!text.trim()) return;
+  draft.value = '';
+  fitDraft();
+  sendText(text);
+}
+draft.addEventListener('input', fitDraft);
+draft.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendDraft(); }
+});
+$('send').addEventListener('click', sendDraft);
+$('attach').addEventListener('click', () => $('picker').click());
+$('picker').addEventListener('change', (e) => {
+  [...e.target.files].forEach((f) => sendFile(f));
+  e.target.value = '';
+});
+
+// Paste anywhere: pictures and files always go straight out; text goes
+// straight out unless you are typing in the box.
+document.addEventListener('paste', (e) => {
+  if (!$('login').hidden || !e.clipboardData) return;
+  const files = [...e.clipboardData.files];
+  if (files.length) {
+    e.preventDefault();
+    files.forEach((f) => sendFile(f, f.name !== 'image.png'));
+    return;
+  }
+  if (e.target === draft) return;
+  const text = e.clipboardData.getData('text/plain');
+  if (text.trim()) { e.preventDefault(); sendText(text); }
+});
+
+// Drag and drop onto the whole window.
+let dragDepth = 0;
+const hasPayload = (e) => e.dataTransfer && [...e.dataTransfer.types].some((t) => t === 'Files' || t === 'text/plain');
+window.addEventListener('dragenter', (e) => { if (hasPayload(e)) { dragDepth++; $('drop').hidden = false; } });
+window.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; $('drop').hidden = true; } });
+window.addEventListener('dragover', (e) => { if (hasPayload(e)) e.preventDefault(); });
+window.addEventListener('drop', (e) => {
+  dragDepth = 0; $('drop').hidden = true;
+  if (!hasPayload(e)) return;
+  e.preventDefault();
+  const files = [...e.dataTransfer.files];
+  if (files.length) files.forEach((f) => sendFile(f));
+  else sendText(e.dataTransfer.getData('text/plain'));
+});
+
+// ---- copying ----
+async function copyText(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    await navigator.clipboard.writeText(text);
+  } else {
+    // Plain-http pages have no clipboard API; the old command still works.
+    const ta = el('textarea', { style: 'position:fixed;opacity:0' });
+    ta.value = text;
+    document.body.append(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove();
+    if (!ok) throw new Error('Copy was blocked by the browser');
+  }
+  toast('Copied');
+}
+const canCopyImages = !!(window.isSecureContext && navigator.clipboard && window.ClipboardItem);
+async function pngBlob(item) {
+  const blob = await (await api(rawURL(item))).blob();
+  if (blob.type === 'image/png') return blob;
+  const bmp = await createImageBitmap(blob); // the clipboard only takes PNG
+  const canvas = el('canvas', { width: bmp.width, height: bmp.height });
+  canvas.getContext('2d').drawImage(bmp, 0, 0);
+  return new Promise((ok, no) => canvas.toBlob((b) => (b ? ok(b) : no(new Error('Could not convert the picture'))), 'image/png'));
+}
+async function copyImage(item) {
+  await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob(item) })]);
+  toast('Picture copied');
+}
+
+// ---- the feed ----
+const rawURL = (item, dl) => '/api/items/' + item.id + '/raw' + (dl ? '?dl=1' : '');
+const isLink = (t) => /^https?:\/\/\S+$/.test(t.trim());
+const looksLikeCode = (t) => /^[ \t]{2,}\S/m.test(t) || /[{};]\s*$/m.test(t);
+
+function size(n) {
+  if (n < 1000) return n + ' B';
+  const units = ['kB', 'MB', 'GB'];
+  let i = -1;
+  do { n /= 1000; i++; } while (n >= 1000 && i < units.length - 1);
+  return n.toFixed(n < 10 ? 1 : 0) + ' ' + units[i];
+}
+function ago(ms) {
+  const s = Math.max(0, (Date.now() - ms) / 1000);
+  if (s < 45) return 'just now';
+  if (s < 3600) return Math.round(s / 60) + ' min ago';
+  if (s < 86400) return Math.round(s / 3600) + ' h ago';
+  if (s < 86400 * 7) return Math.round(s / 86400) + ' d ago';
+  return new Date(ms).toLocaleDateString();
+}
+
+function build(item) {
+  const li = el('li', { class: 'item' });
+  const actions = el('span', { class: 'actions' });
+  const act = (label, fn, cls) => {
+    const b = el('button', { class: 'act' + (cls ? ' ' + cls : ''), type: 'button', text: label, onclick: () => Promise.resolve(fn()).catch(fail) });
+    actions.append(b);
+    return b;
+  };
+
+  if (item.kind === 'text') {
+    const body = el('button', { class: 'text', type: 'button', title: 'Click to copy', text: item.text, onclick: () => copyText(item.text).catch(fail) });
+    if (looksLikeCode(item.text)) body.classList.add('code');
+    li.append(body);
+    if (item.text.length > 700 || item.text.split('\n').length > 9) {
+      body.classList.add('clamped');
+      const more = act('Show all', () => { body.classList.remove('clamped'); more.remove(); });
+    }
+    if (isLink(item.text)) {
+      actions.append(el('a', { class: 'act', href: item.text.trim(), target: '_blank', rel: 'noopener noreferrer', text: 'Open' }));
+    }
+    act('Copy', () => copyText(item.text));
+  } else {
+    if (item.kind === 'image') {
+      li.append(el('a', { class: 'shot', href: rawURL(item), target: '_blank', rel: 'noopener' },
+        el('img', { src: rawURL(item), alt: item.name, loading: 'lazy' })));
+      if (canCopyImages) act('Copy', () => copyImage(item));
+    } else {
+      const ext = (item.name.includes('.') ? item.name.split('.').pop() : 'file').slice(0, 5);
+      li.append(el('div', { class: 'file' },
+        el('span', { class: 'ext', text: ext }),
+        el('span', { style: 'min-width:0' },
+          el('div', { class: 'name', text: item.name, title: item.name }),
+          el('div', { class: 'size', text: size(item.size) }))));
+    }
+    actions.append(el('a', { class: 'act', href: rawURL(item, true), download: item.name, text: 'Save' }));
+  }
+
+  li._pin = act('Pin', () => api('/api/items/' + item.id + '/pin?on=' + (li._item.pinned ? 0 : 1), { method: 'PUT' }));
+  act('Delete', () => api('/api/items/' + item.id, { method: 'DELETE' }), 'danger');
+
+  li._from = el('span', { class: 'from' });
+  li.append(el('div', { class: 'meta' }, li._from, actions));
+  return li;
+}
+
+function paint(li, item) {
+  li._item = item;
+  li.classList.toggle('pinned', item.pinned);
+  li._pin.textContent = item.pinned ? 'Pinned' : 'Pin';
+  li._pin.classList.toggle('on', item.pinned);
+  li._pin.title = item.pinned ? 'Unpin: let this expire again' : 'Keep this until you delete it';
+  const bits = [item.device || 'unknown', ago(item.created)];
+  if (item.kind === 'image') bits.push(size(item.size));
+  li._from.textContent = bits.join(' · ');
+}
+
+const nodes = new Map();
+let items = [];
+function render() {
+  const feed = $('feed');
+  const ordered = [...items.filter((i) => i.pinned), ...items.filter((i) => !i.pinned)];
+  const seen = new Set();
+  let cursor = feed.firstElementChild;
+  for (const item of ordered) {
+    seen.add(item.id);
+    let li = nodes.get(item.id);
+    if (!li) { li = build(item); nodes.set(item.id, li); }
+    paint(li, item);
+    if (li === cursor) cursor = cursor.nextElementSibling;
+    else feed.insertBefore(li, cursor);
+  }
+  for (const [id, li] of nodes) if (!seen.has(id)) { li.remove(); nodes.delete(id); }
+  $('empty').hidden = items.length > 0;
+}
+
+async function load() {
+  try {
+    items = (await (await api('/api/items')).json()).items;
+    render();
+  } catch (e) { fail(e); }
+}
+setInterval(() => { for (const li of nodes.values()) paint(li, li._item); }, 30000);
+
+// ---- live updates ----
+let live = false, events;
+function paintStatus() {
+  $('dot').classList.toggle('live', live);
+  $('status').textContent = sending ? 'sending ' + sending : live ? 'live' : 'offline';
+}
+function connect() {
+  if (events) events.close();
+  events = new EventSource('/api/events');
+  events.onopen = () => { live = true; paintStatus(); };
+  events.onmessage = load; // also fires on (re)connect, which catches up after a gap
+  events.onerror = () => { live = false; paintStatus(); };
+}
+
+// ---- footer ----
+function paintDevice() { $('rename').textContent = device; }
+$('rename').addEventListener('click', () => {
+  const name = prompt('Name for this device in the feed:', device);
+  if (name && name.trim()) { device = name.trim().slice(0, 40); store.set('fetch.device', device); paintDevice(); }
+});
+$('clear').addEventListener('click', () => {
+  const n = items.filter((i) => !i.pinned).length;
+  if (n && confirm('Delete ' + n + ' unpinned item' + (n === 1 ? '' : 's') + ' on every device?')) {
+    api('/api/items', { method: 'DELETE' }).catch(fail);
+  }
+});
+async function loadInfo() {
+  const info = await (await api('/api/info')).json();
+  const h = info.ttl_hours;
+  $('policy').textContent = h > 0
+    ? 'Unpinned items delete themselves after ' + (h >= 48 ? Math.round(h / 24) + ' days' : Math.round(h) + ' hours')
+    : 'Items stay until you delete them';
+}
+
+// ---- login ----
+function showLogin() {
+  if (events) events.close();
+  $('login').hidden = false;
+  $('token').focus();
+}
+$('loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  $('loginErr').textContent = '';
+  try {
+    const res = await fetch('/api/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: $('token').value }),
+    });
+    if (!res.ok) { $('loginErr').textContent = 'That token did not match.'; return; }
+  } catch {
+    $('loginErr').textContent = 'Cannot reach the hub.';
+    return;
+  }
+  $('token').value = '';
+  $('login').hidden = true;
+  start();
+});
+
+function start() {
+  loadInfo().then(connect).catch(fail);
+}
+if (/Mac|iPhone|iPad/.test(navigator.userAgent)) $('hint').textContent = $('hint').textContent.replace('Ctrl', '⌘');
+paintDevice();
+fitDraft();
+paintStatus();
+start();
+})();
+</script>
+</body>
+</html>

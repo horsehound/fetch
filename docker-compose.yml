@@ -1,0 +1,15 @@
+# Home network (Proxmox, NAS, any always-on box): plain http on port 8787.
+#
+#   docker compose up -d
+#   docker compose logs hub | grep token
+services:
+  hub:
+    build: ./hub
+    restart: unless-stopped
+    ports:
+      - "8787:8787"
+    volumes:
+      - fetch-data:/data
+
+volumes:
+  fetch-data:
