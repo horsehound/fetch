@@ -7,7 +7,10 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.net.Uri
+import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
@@ -224,7 +227,8 @@ class HubDeviceTest {
             waitFor { compose.onAllNodesWithText("Pair with this hub?").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("Key ${key.fingerprint}.", substring = true).assertExists()
             screenshot("pair-prompt")
-            compose.onNodeWithText("Pair").performClick()
+            // The dialog's button, not the one in Settings behind it.
+            compose.onNode(hasText("Pair") and hasAnyAncestor(isDialog())).performClick()
             waitFor { compose.onAllNodesWithText("waiting for the new phone").fetchSemanticsNodes().isNotEmpty() }
         }
         assertEquals(key.text, HubConfig.load(context).key)
