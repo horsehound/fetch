@@ -4,43 +4,39 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
-	"mime"
-	"net/http"
+	"log"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
-	"unicode"
 )
 
-// Item is one entry in the feed. Text lives inline; images and files live on
-// disk under files/<id>.
+// Item is one entry in the feed. The hub can't read any of it: Meta is an
+// encrypted envelope (kind, text, file name, device...) and the data on disk
+// under files/<id> is an encrypted chunk stream. Only the timestamps, sizes
+// and the pinned flag are visible to the hub.
 type Item struct {
 	ID      string `json:"id"`
-	Kind    string `json:"kind"` // text | image | file
-	Text    string `json:"text,omitempty"`
-	Name    string `json:"name,omitempty"`
-	Mime    string `json:"mime,omitempty"`
-	Size    int64  `json:"size"`
-	Device  string `json:"device,omitempty"`
-	Created int64  `json:"created"` // unix milliseconds
+	Meta    []byte `json:"meta"` // base64 in JSON
+	Size    int64  `json:"size"` // bytes of encrypted data; 0 for text items
+	Created int64  `json:"created"`
 	Pinned  bool   `json:"pinned"`
-
-	// Filled in when the feed is listed, never stored: set when a text item
-	// is code. Lang is an id such as "bash", LangLabel its display name, and
-	// Tokens the text split into highlight classes (see highlight.go).
-	Lang      string `json:"lang,omitempty"`
-	LangLabel string `json:"lang_label,omitempty"`
-	Tokens    []Tok  `json:"tokens,omitempty"`
 }
+
+var errBadUpload = errors.New("that upload isn't a complete encrypted item")
 
 type Store struct {
 	dir   string
 	mu    sync.RWMutex
 	items []Item // newest first
+	check string // key fingerprint, set by the first device
+}
+
+type vaultFile struct {
+	Check string `json:"check"`
 }
 
 func OpenStore(dir string) (*Store, error) {
@@ -55,13 +51,25 @@ func OpenStore(dir string) (*Store, error) {
 	} else if !os.IsNotExist(err) {
 		return nil, err
 	}
+	if b, err := os.ReadFile(s.vaultPath()); err == nil {
+		var v vaultFile
+		if json.Unmarshal(b, &v) == nil {
+			s.check = v.Check
+		}
+	}
 
-	// Reconcile the index with what is actually on disk.
+	// Reconcile the index with what is on disk. Items from before end-to-end
+	// encryption have no envelope; they are deleted, pinned or not.
 	known := map[string]bool{}
 	kept := s.items[:0]
+	legacy := 0
 	for _, it := range s.items {
-		if it.Kind != "text" {
-			if _, err := os.Stat(s.Path(it.ID)); err != nil {
+		if len(it.Meta) == 0 {
+			legacy++
+			continue
+		}
+		if it.Size > 0 {
+			if st, err := os.Stat(s.Path(it.ID)); err != nil || st.Size() != it.Size {
 				continue
 			}
 		}
@@ -69,6 +77,9 @@ func OpenStore(dir string) (*Store, error) {
 		kept = append(kept, it)
 	}
 	s.items = kept
+	if legacy > 0 {
+		log.Printf("deleted %d unencrypted item(s) from before end-to-end encryption", legacy)
+	}
 	entries, _ := os.ReadDir(filepath.Join(dir, "files"))
 	for _, e := range entries {
 		if !known[e.Name()] {
@@ -79,23 +90,28 @@ func OpenStore(dir string) (*Store, error) {
 }
 
 func (s *Store) indexPath() string     { return filepath.Join(s.dir, "index.json") }
+func (s *Store) vaultPath() string     { return filepath.Join(s.dir, "vault.json") }
 func (s *Store) Path(id string) string { return filepath.Join(s.dir, "files", id) }
 
-// save must be called with s.mu held.
+func writeAtomic(path string, v any) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, b, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}
+
+// save must be called with s.mu held (or before the store is shared).
 func (s *Store) save() error {
 	items := s.items
 	if items == nil {
 		items = []Item{}
 	}
-	b, err := json.Marshal(items)
-	if err != nil {
-		return err
-	}
-	tmp := s.indexPath() + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, s.indexPath())
+	return writeAtomic(s.indexPath(), items)
 }
 
 func newID() string {
@@ -123,82 +139,53 @@ func (s *Store) Get(id string) (Item, bool) {
 	return Item{}, false
 }
 
-func (s *Store) add(it Item) (Item, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.items = append([]Item{it}, s.items...)
-	return it, s.save()
-}
+// Add stores an encrypted item: its metadata envelope and its encrypted data,
+// streamed from r. The hub can only check the shape, never the contents.
+func (s *Store) Add(meta []byte, r io.Reader) (Item, error) {
+	if len(meta) < metaOverhead || meta[0] != formatVersion {
+		return Item{}, errBadUpload
+	}
+	it := Item{ID: newID(), Meta: meta, Created: time.Now().UnixMilli()}
 
-func (s *Store) AddText(text, device string) (Item, error) {
-	return s.add(Item{
-		ID: newID(), Kind: "text", Text: text, Size: int64(len(text)),
-		Device: device, Created: time.Now().UnixMilli(),
-	})
-}
-
-// AddFile streams r to disk and records it. Errors from r (such as the upload
-// size limit) are returned unchanged.
-func (s *Store) AddFile(r io.Reader, name, declaredMime, device string) (Item, error) {
-	id := newID()
 	tmp, err := os.CreateTemp(filepath.Join(s.dir, "files"), "tmp-*")
 	if err != nil {
 		return Item{}, err
 	}
 	defer os.Remove(tmp.Name()) // no-op once renamed
-
-	head := make([]byte, 512)
-	n, err := io.ReadFull(r, head)
-	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
-		tmp.Close()
-		return Item{}, err
-	}
-	head = head[:n]
-	size := int64(n)
-	if _, err := tmp.Write(head); err != nil {
-		tmp.Close()
-		return Item{}, err
-	}
-	copied, err := io.Copy(tmp, r)
-	size += copied
+	it.Size, err = io.Copy(tmp, r)
 	if cerr := tmp.Close(); err == nil {
 		err = cerr
 	}
 	if err != nil {
 		return Item{}, err
 	}
-	if size == 0 {
-		return Item{}, errEmpty
+	if !validDataSize(it.Size) {
+		return Item{}, errBadUpload
+	}
+	if it.Size > 0 {
+		if err := os.Rename(tmp.Name(), s.Path(it.ID)); err != nil {
+			return Item{}, err
+		}
 	}
 
-	name = cleanName(name)
-	mt := resolveMime(declaredMime, name, head)
-	kind := "file"
-	if inlineImage[mt] {
-		kind = "image"
-	}
-	if name == "" {
-		name = kind + "-" + time.Now().Format("20060102-150405") + extFor(mt)
-	}
-	if err := os.Rename(tmp.Name(), s.Path(id)); err != nil {
-		return Item{}, err
-	}
-	return s.add(Item{
-		ID: id, Kind: kind, Name: name, Mime: mt, Size: size,
-		Device: device, Created: time.Now().UnixMilli(),
-	})
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.items = append([]Item{it}, s.items...)
+	return it, s.save()
 }
 
 func (s *Store) removeWhere(drop func(Item) bool) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.removeLocked(drop)
+}
+
+func (s *Store) removeLocked(drop func(Item) bool) (int, error) {
 	kept := make([]Item, 0, len(s.items))
 	n := 0
 	for _, it := range s.items {
 		if drop(it) {
-			if it.Kind != "text" {
-				os.Remove(s.Path(it.ID))
-			}
+			os.Remove(s.Path(it.ID))
 			n++
 			continue
 		}
@@ -239,77 +226,42 @@ func (s *Store) SetPinned(id string, on bool) (bool, error) {
 	return false, nil
 }
 
-// ---- naming and type helpers ----
+// ---- the key fingerprint ----
 
-// Types a browser can safely show inline in an <img>. SVG is deliberately
-// excluded: it can carry script, so it is always served as a download.
-var inlineImage = map[string]bool{
-	"image/png": true, "image/jpeg": true, "image/gif": true,
-	"image/webp": true, "image/avif": true, "image/bmp": true,
+func (s *Store) Check() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.check
 }
 
-var commonExt = map[string]string{
-	"image/png": ".png", "image/jpeg": ".jpg", "image/gif": ".gif",
-	"image/webp": ".webp", "image/avif": ".avif", "image/bmp": ".bmp",
-	"image/heic": ".heic", "image/svg+xml": ".svg",
-	"application/pdf": ".pdf", "application/zip": ".zip",
-	"text/plain": ".txt", "video/mp4": ".mp4", "video/quicktime": ".mov",
+var errOtherKey = errors.New("this hub already uses a different key")
+
+// SetCheck records the fingerprint of the key the devices share. Only the
+// first one sticks; a different one means a device has the wrong key.
+func (s *Store) SetCheck(check string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.check == check {
+		return nil
+	}
+	if s.check != "" {
+		return errOtherKey
+	}
+	s.check = check
+	return writeAtomic(s.vaultPath(), vaultFile{Check: check})
 }
 
-func extFor(mt string) string {
-	if e, ok := commonExt[mt]; ok {
-		return e
+// Reset forgets the key and deletes every item, pinned or not, so the
+// devices can start over with a new key.
+func (s *Store) Reset() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, err := s.removeLocked(func(Item) bool { return true }); err != nil {
+		return err
 	}
-	if exts, _ := mime.ExtensionsByType(mt); len(exts) > 0 {
-		return exts[0]
+	s.check = ""
+	if err := os.Remove(s.vaultPath()); err != nil && !os.IsNotExist(err) {
+		return err
 	}
-	return ""
-}
-
-func baseType(s string) string {
-	if mt, _, err := mime.ParseMediaType(s); err == nil {
-		return mt
-	}
-	return ""
-}
-
-// isVague reports content types that say nothing about the payload (curl
-// sends form-urlencoded for any --data upload, for instance).
-func isVague(mt string) bool {
-	return mt == "" || mt == "application/octet-stream" || mt == "application/x-www-form-urlencoded"
-}
-
-func resolveMime(declared, name string, head []byte) string {
-	mt := baseType(declared)
-	if !isVague(mt) {
-		return mt
-	}
-	if byExt := baseType(mime.TypeByExtension(strings.ToLower(filepath.Ext(name)))); byExt != "" {
-		return byExt
-	}
-	if sniffed := baseType(http.DetectContentType(head)); sniffed != "" {
-		return sniffed
-	}
-	return "application/octet-stream"
-}
-
-func cleanName(name string) string {
-	name = strings.ReplaceAll(name, "\\", "/")
-	if i := strings.LastIndex(name, "/"); i >= 0 {
-		name = name[i+1:]
-	}
-	name = strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) {
-			return -1
-		}
-		return r
-	}, name)
-	name = strings.TrimSpace(name)
-	if name == "." || name == ".." {
-		return ""
-	}
-	if r := []rune(name); len(r) > 180 {
-		name = string(r[len(r)-180:])
-	}
-	return name
+	return nil
 }

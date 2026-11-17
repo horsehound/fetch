@@ -13,3 +13,4 @@ hub/data/
 # desktop app
 desktop/node_modules/
 desktop/dist/
+tools/vendor/node_modules/
