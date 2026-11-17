@@ -98,12 +98,15 @@ fetch send -t (Get-Clipboard -Raw)   # Windows: send clipboard text
 The app isn't on the App Store. Every push to this repo builds it with GitHub Actions and publishes `Fetch.ipa` in the [releases](../../releases); you install that file with [SideStore](https://sidestore.io) or AltStore, which sign it with your own Apple ID. No Mac needed.
 
 1. Set up SideStore on the iPhone if you haven't (its site walks through it).
-2. On the iPhone, download `Fetch.ipa` from the latest [release](../../releases).
-3. In SideStore, open **My Apps**, tap **+**, and pick the file.
-4. When it asks about app extensions, **keep them**. The extension is what puts Fetch in the share sheet. It uses one extra App ID on a free Apple account.
-5. Open Fetch and enter the hub address and token (`192.168.1.20:8787` or `fetch.example.com`; the app adds http or https itself).
+2. In SideStore, open **Sources**, add this source, and install Fetch from it:
 
-To update, install the newer `Fetch.ipa` the same way; your settings stay.
+   ```
+   https://raw.githubusercontent.com/horsehound/houndapps/main/source.json
+   ```
+
+   Updates then show up in SideStore by themselves. Without the source: download `Fetch.ipa` from the latest [release](../../releases), open **My Apps**, tap **+**, and pick the file.
+3. When it asks about app extensions, **keep them**. The extension is what puts Fetch in the share sheet. It uses one extra App ID on a free Apple account.
+4. Open Fetch and enter the hub address and token (`192.168.1.20:8787` or `fetch.example.com`; the app adds http or https itself).
 
 With a free Apple ID, sideloaded apps count against Apple's limit of three and have to be refreshed every seven days, which SideStore does for you.
 
