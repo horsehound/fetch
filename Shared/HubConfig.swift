@@ -52,26 +52,26 @@ enum AppGroup {
 struct HubConfig: Equatable {
     var server = ""
     var token = ""
+    /// The encryption key every paired device shares, as in a pairing link.
+    var key = ""
     var device = "iPhone"
 
-    var isComplete: Bool { baseURL != nil && !token.trimmingCharacters(in: .whitespaces).isEmpty }
+    var isComplete: Bool {
+        baseURL != nil && !token.trimmingCharacters(in: .whitespaces).isEmpty && sealKey != nil
+    }
+
+    var sealKey: Seal.Key? { try? Seal.Key(text: key) }
 
     /// Accepts full http(s) URLs, and fills in the scheme when it is left out:
     /// http for an address on a home network ("192.168.1.20:8787",
     /// "proxmox.lan"), https for a domain ("fetch.example.com").
     var baseURL: URL? {
-        var text = server.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return nil }
-        if !text.contains("://") {
-            let host = text.split(separator: "/").first.map(String.init) ?? text
-            let isLocal = host.contains(":") || !host.contains(".")
-                || host.hasSuffix(".local") || host.hasSuffix(".lan")
-                || host.allSatisfy { $0.isNumber || $0 == "." }
-            text = (isLocal ? "http://" : "https://") + text
-        }
-        while text.hasSuffix("/") { text.removeLast() }
-        guard let url = URL(string: text), url.host != nil else { return nil }
-        return url
+        Seal.normalizeURL(server).flatMap(URL.init(string:))
+    }
+
+    var pairing: Seal.Pairing? {
+        guard let url = baseURL, let k = sealKey, !token.isEmpty else { return nil }
+        return Seal.Pairing(hub: url.absoluteString, token: token, key: k)
     }
 
     static func load() -> HubConfig {
@@ -79,6 +79,7 @@ struct HubConfig: Equatable {
         var config = HubConfig()
         config.server = d.string(forKey: "server") ?? ""
         config.token = d.string(forKey: "token") ?? ""
+        config.key = d.string(forKey: "key") ?? ""
         if let name = d.string(forKey: "device"), !name.isEmpty { config.device = name }
         return config
     }
@@ -87,6 +88,7 @@ struct HubConfig: Equatable {
         let d = AppGroup.defaults
         d.set(server.trimmingCharacters(in: .whitespacesAndNewlines), forKey: "server")
         d.set(token.trimmingCharacters(in: .whitespacesAndNewlines), forKey: "token")
+        d.set(key.trimmingCharacters(in: .whitespacesAndNewlines), forKey: "key")
         d.set(device.trimmingCharacters(in: .whitespacesAndNewlines), forKey: "device")
     }
 }

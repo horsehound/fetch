@@ -10,6 +10,8 @@ struct FetchApp: App {
                 .environmentObject(model)
                 .tint(Theme.lime)
                 .preferredColorScheme(.dark)
+                // fetchpair:// links, from the Camera app scanning a QR code or a tapped link.
+                .onOpenURL { model.received($0) }
         }
     }
 }

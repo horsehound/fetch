@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.net.Uri
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
@@ -23,6 +24,7 @@ import java.io.File
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Before
@@ -57,11 +59,17 @@ class HubDeviceTest {
         val url = arguments.getString("hubUrl")
         val token = arguments.getString("hubToken")
         assumeTrue("needs -e hubUrl and -e hubToken", url != null && token != null)
-        val config = HubConfig(server = url!!, token = token!!, device = "Test phone")
+        val config = HubConfig(server = url!!, token = token!!, key = key.text, device = "Test phone")
         config.save(context)
         client = HubClient.from(config)!!
         laptop = HubClient.from(config.copy(device = "Laptop"))!!
         runBlocking {
+            // The hub may be fresh, or set up by an earlier test with another key.
+            val check = client.hubCheck()
+            if (check != key.check) {
+                if (check.isNotEmpty()) client.resetHub()
+                client.claim()
+            }
             client.list().filter { it.pinned }.forEach { client.setPinned(it, false) }
             client.clearUnpinned()
         }
@@ -109,8 +117,13 @@ class HubDeviceTest {
             compose.onNodeWithText("Settings").performClick()
             waitFor { compose.onAllNodesWithText("This device").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("Test phone").assertExists()
+            compose.onNodeWithText(key.fingerprint).assertExists()
             screenshot("settings")
-            compose.onNodeWithContentDescription("Cancel").performClick()
+            // The pairing code for another device.
+            compose.onNodeWithText("Show pairing code").performClick()
+            waitFor { compose.onAllNodesWithText("Copy link").fetchSemanticsNodes().isNotEmpty() }
+            screenshot("pairing")
+            compose.onNodeWithContentDescription("Close").performClick()
             waitFor { compose.onAllNodesWithText("arrived live").fetchSemanticsNodes().isNotEmpty() }
         }
     }
@@ -165,9 +178,56 @@ class HubDeviceTest {
 
     @Test
     fun aWrongTokenIsReportedAsSuch() {
-        val stranger = HubClient.from(HubConfig(arguments.getString("hubUrl")!!, "not-the-token"))!!
+        val stranger = HubClient.from(HubConfig(arguments.getString("hubUrl")!!, "not-the-token", key.text))!!
         val failure = runCatching { runBlocking { stranger.list() } }.exceptionOrNull()
         assertTrue("got $failure", failure is HubError.WrongToken)
+    }
+
+    @Test
+    fun withoutTheKeyNothingCanBeRead() {
+        runBlocking {
+            client.sendText("plain words the hub must not see")
+            val item = client.list().first { it.text == "plain words the hub must not see" }
+            // Anyone with the token but not the key, the hub included, sees a locked item.
+            val listing = HubClient.to(arguments.getString("hubUrl")!!, arguments.getString("hubToken")!!, Seal.Key.new(), "x")!!
+                .list().first { it.id == item.id }
+            assertTrue(listing.broken)
+            assertEquals(null, listing.text)
+        }
+    }
+
+    @Test
+    fun itemsUnderAnotherKeyShowAsLocked() {
+        val other = HubClient.to(arguments.getString("hubUrl")!!, arguments.getString("hubToken")!!, Seal.Key.new(), "Old laptop")!!
+        runBlocking {
+            other.sendText("sealed with a key this phone doesn't have")
+            val locked = client.list().single { it.broken }
+            assertNull(locked.text)
+            // A device with another key is told so instead of sending into the void.
+            val failure = runCatching { other.verify() }.exceptionOrNull()
+            assertTrue("got $failure", failure is HubError.OtherKey)
+        }
+        ActivityScenario.launch(MainActivity::class.java).use {
+            waitFor { compose.onAllNodesWithText("Locked with a different key", substring = true).fetchSemanticsNodes().isNotEmpty() }
+            screenshot("locked")
+        }
+    }
+
+    @Test
+    fun aPairingLinkPairsThePhone() {
+        val link = Seal.Pairing(Seal.normalizeUrl(arguments.getString("hubUrl")!!)!!, arguments.getString("hubToken")!!, key).link
+        runBlocking { laptop.sendText("waiting for the new phone") }
+        // A phone that knows nothing yet.
+        HubConfig(device = "Test phone").save(context)
+        val open = Intent(Intent.ACTION_VIEW, Uri.parse(link)).setClass(context, MainActivity::class.java)
+        ActivityScenario.launch<MainActivity>(open).use {
+            waitFor { compose.onAllNodesWithText("Pair with this hub?").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText("Key ${key.fingerprint}.", substring = true).assertExists()
+            screenshot("pair-prompt")
+            compose.onNodeWithText("Pair").performClick()
+            waitFor { compose.onAllNodesWithText("waiting for the new phone").fetchSemanticsNodes().isNotEmpty() }
+        }
+        assertEquals(key.text, HubConfig.load(context).key)
     }
 
     @Test
@@ -179,6 +239,11 @@ class HubDeviceTest {
     }
 
     // ---- helpers ----
+
+    companion object {
+        /** The key every test in this run shares, as paired devices would. */
+        val key: Seal.Key = Seal.Key.new()
+    }
 
     private fun waitFor(condition: () -> Boolean) = compose.waitUntil(20_000, condition)
 

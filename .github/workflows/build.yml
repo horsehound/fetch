@@ -9,6 +9,9 @@ on:
       - "android/**"
       - "hub/**"
       - "desktop/**"
+      - "spec/**"
+      - "Tests/**"
+      - "tools/**"
       - "docker-compose*.yml"
       - "project.yml"
       - ".github/workflows/build.yml"
@@ -33,6 +36,15 @@ jobs:
           go-version: stable
           cache: false
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # The web page's encryption and code detection, against the same
+      # vectors and corpus as every other client.
+      - name: Test the web page's scripts
+        run: node --test hub/webtest/*.test.js
+
       - name: Test and build
         working-directory: hub
         run: |
@@ -44,6 +56,8 @@ jobs:
           GOOS=linux   GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -ldflags "$flags" -o dist/fetch-linux-arm64 .
           GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags "$flags" -o dist/fetch-windows-amd64.exe .
 
+      # Items are encrypted on the device, so this goes through the CLI: it
+      # sets up the key, sends, and reads back. The hub must hold no plaintext.
       - name: Start the hub with Docker and send an item through it
         run: |
           docker compose up -d --build
@@ -52,8 +66,14 @@ jobs:
             sleep 1
           done
           token=$(docker compose logs hub | grep -o 'token  *[a-z0-9-]*' | awk '{print $2}')
-          curl -fsS -H "Authorization: Bearer $token" --data-binary "hello from ci" http://localhost:8787/api/items
-          curl -fsS -H "Authorization: Bearer $token" http://localhost:8787/api/items | grep -q "hello from ci"
+          cli=hub/dist/fetch-linux-amd64
+          export HOME="$RUNNER_TEMP/cli" && mkdir -p "$HOME"
+          $cli init http://localhost:8787 "$token"
+          $cli send -t "hello from ci"
+          test "$($cli latest)" = "hello from ci"
+          if curl -fsS -H "Authorization: Bearer $token" http://localhost:8787/api/items | grep -q "hello from ci"; then
+            echo "The hub stored the text in the clear"; exit 1
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
@@ -70,6 +90,19 @@ jobs:
         run: |
           brew install xcodegen
           xcodegen generate
+
+      # Encryption against the shared vectors, and the code highlighter
+      # against the shared corpus, on a simulator.
+      - name: Test
+        run: |
+          device=$(xcrun simctl list devices available | grep -m1 -o 'iPhone [^(]*' | sed 's/ *$//')
+          echo "Testing on $device"
+          xcodebuild test \
+            -project Fetch.xcodeproj \
+            -scheme Fetch \
+            -destination "platform=iOS Simulator,name=$device" \
+            -derivedDataPath build-test \
+            CODE_SIGNING_ALLOWED=NO
 
       - name: Build (unsigned)
         run: |

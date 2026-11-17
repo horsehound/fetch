@@ -2,11 +2,15 @@ package com.horsehound.fetch
 
 import java.io.File
 import java.io.IOException
+import java.io.InputStream
 import java.io.OutputStream
 import java.net.ConnectException
 import java.net.SocketTimeoutException
 import java.net.URLEncoder
 import java.net.UnknownHostException
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 import javax.net.ssl.SSLException
 import kotlin.coroutines.resume
@@ -19,50 +23,102 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.HttpUrl
-import okhttp3.MediaType
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
-import org.json.JSONException
+import okio.BufferedSink
 
 /** Everything that can go wrong talking to the hub, worded for the person holding the phone. */
 sealed class HubError(message: String) : Exception(message) {
-    class NotSetUp : HubError("Add your hub address and token in Settings.")
-    class WrongToken : HubError("The hub rejected the token. Check it in Settings.")
+    class NotSetUp : HubError("Pair this phone in Settings.")
+    class WrongToken : HubError("The hub rejected the token. Pair again in Settings.")
     class NotAHub : HubError("Something answered at that address, but it isn't a Fetch hub.")
-    class Server(code: Int, message: String) : HubError(message.ifEmpty { "The hub answered $code." })
+    class OtherKey : HubError("This phone's key doesn't match the hub's anymore. Pair again in Settings.")
+    class AlreadySetUp : HubError("This hub already has a key. Pair from a device that has it, or start over.")
+    class NoEncryption : HubError("This hub doesn't support encryption yet. Update it first.")
+    class Server(val code: Int, message: String) : HubError(message.ifEmpty { "The hub answered $code." })
     class Unreachable(why: String) : HubError("Can't reach the hub. $why".trim())
 }
 
 /** Thrown while uploading when the thing to send can't be read on this device. */
 class UnreadableException : IOException("Couldn't read what was shared.")
 
-class HubClient private constructor(
+/**
+ * Talks to the hub. Everything is sealed with [key] before it is sent and
+ * opened after it arrives; the hub only handles ciphertext.
+ */
+class HubClient(
     private val base: HttpUrl,
     private val token: String,
+    val key: Seal.Key,
     private val device: String,
 ) {
+    // ---- the key ----
+
+    /** The check of the key the hub was set up with, or "" if nobody has set it up. */
+    suspend fun hubCheck(): String {
+        val answer = try {
+            perform(request("api/vault").build()) { it.body!!.string() }
+        } catch (e: HubError.Server) {
+            // A hub from before encryption doesn't know the vault.
+            if (e.code == 404) throw HubError.NoEncryption()
+            throw e
+        }
+        val o = try {
+            Json.parse(answer) as? Map<*, *>
+        } catch (e: Json.Invalid) {
+            null
+        }
+        return o?.get("check") as? String ?: throw HubError.NoEncryption()
+    }
+
+    /** Makes this phone's key the hub's. */
+    suspend fun claim() {
+        val body = "{\"check\":\"${key.check}\"}".toRequestBody(JSON)
+        try {
+            perform(request("api/vault").put(body).build()) {}
+        } catch (e: HubError.Server) {
+            if (e.code == 409) throw HubError.AlreadySetUp()
+            throw e
+        }
+    }
+
+    /** Deletes everything on the hub, pinned too, and its key's check. */
+    suspend fun resetHub() {
+        perform(request("api/vault").delete().build()) {}
+    }
+
+    /** Throws unless this phone's key is the hub's. */
+    suspend fun verify() {
+        if (hubCheck() != key.check) throw HubError.OtherKey()
+    }
+
     // ---- reading ----
 
     suspend fun list(): List<Item> = perform(request("api/items").build()) { response ->
         try {
-            Item.parseList(response.body!!.string())
-        } catch (e: JSONException) {
+            Item.parseList(response.body!!.string(), key)
+        } catch (e: Json.Invalid) {
             throw HubError.NotAHub()
         }
     }
 
-    suspend fun raw(item: Item): ByteArray =
-        perform(request("api/items/${item.id}/raw").build()) { it.body!!.bytes() }
+    /** An item's data, decrypted. For pictures in the feed; files go through [download]. */
+    suspend fun raw(item: Item): ByteArray {
+        val out = java.io.ByteArrayOutputStream()
+        download(item, out)
+        return out.toByteArray()
+    }
 
-    /** Streams an item into [target], so large files never sit in memory. */
+    /** Streams an item into [target], decrypting as it arrives, so large files never sit in memory. */
     suspend fun download(item: Item, target: OutputStream) {
+        val salt = item.salt ?: throw Seal.CannotOpen()
         perform(request("api/items/${item.id}/raw").build()) { response ->
-            response.body!!.byteStream().copyTo(target)
+            Seal.openData(response.body!!.byteStream(), target, key, salt)
         }
     }
 
@@ -112,17 +168,51 @@ class HubClient private constructor(
     // ---- writing ----
 
     suspend fun sendText(text: String) {
-        perform(request("api/items").post(text.toRequestBody(TEXT)).build()) {}
+        val bytes = text.toByteArray(Charsets.UTF_8)
+        if (bytes.size > Seal.MAX_TEXT_IN_META) {
+            sendBytes(bytes, name = "text-${stamp()}.txt", mime = "text/plain")
+            return
+        }
+        upload(Seal.Meta("text", device = device, text = text)) { _, _ -> }
     }
 
     suspend fun sendBytes(data: ByteArray, name: String?, mime: String) {
-        sendBody(data.toRequestBody(mime.toMediaTypeOrNull() ?: BINARY), name)
+        sendStream(name, mime, data.size.toLong()) { data.inputStream() }
     }
 
-    /** Uploads whatever [body] produces; a streaming body keeps large files out of memory. */
-    suspend fun sendBody(body: RequestBody, name: String?) {
-        val builder = if (name.isNullOrBlank()) request("api/items") else request("api/items", "name" to name)
-        perform(builder.post(body).build()) {}
+    /**
+     * Encrypts and uploads what [open] reads, as it is read, so large files
+     * never sit in memory. [size] is the plaintext size if it is known.
+     */
+    suspend fun sendStream(name: String?, mime: String, size: Long?, open: () -> InputStream) {
+        val kind = if (mime in INLINE_IMAGES) "image" else "file"
+        val fileName = name?.takeIf { it.isNotBlank() } ?: ("$kind-${stamp()}" + (EXTENSIONS[mime]?.let { ".$it" } ?: ""))
+        upload(Seal.Meta(kind, device = device, name = fileName, mime = mime, size = size)) { salt, sink ->
+            open().use { Seal.sealData(it, sink.outputStream(), key, salt) }
+        }
+    }
+
+    private suspend fun upload(meta: Seal.Meta, data: (ByteArray, BufferedSink) -> Unit) {
+        val envelope = Seal.sealMeta(meta, key)
+        val head = Seal.uploadHead(envelope)
+        val body = object : RequestBody() {
+            override fun contentType() = SEALED
+
+            // Text travels in the envelope with no data after it, so its
+            // length is known; files stream.
+            override fun contentLength(): Long = if (meta.kind == "text") head.size.toLong() else -1
+
+            // Sent once: a second attempt would encrypt whatever the source
+            // holds by then under the same key and nonces.
+            override fun isOneShot() = true
+
+            override fun writeTo(sink: BufferedSink) {
+                sink.write(head)
+                if (meta.kind != "text") data(envelope.salt, sink)
+                sink.flush()
+            }
+        }
+        perform(request("api/items").post(body).build()) {}
     }
 
     suspend fun delete(item: Item) {
@@ -192,6 +282,7 @@ class HubClient private constructor(
     /** Turns transport failures into something readable. */
     private fun readable(e: IOException): Exception = when (e) {
         is UnreadableException -> e
+        is Seal.CannotOpen -> e
         is UnknownHostException -> HubError.Unreachable("That address couldn't be found.")
         is SocketTimeoutException -> HubError.Unreachable("It didn't answer in time.")
         is ConnectException -> HubError.Unreachable("Nothing is answering at that address.")
@@ -203,11 +294,27 @@ class HubClient private constructor(
         fun from(config: HubConfig): HubClient? {
             if (!config.isComplete) return null
             val base = config.baseUrl ?: return null
-            return HubClient(base, config.token.trim(), config.device.trim().ifEmpty { HubConfig.DEFAULT_DEVICE })
+            val key = config.sealKey ?: return null
+            return HubClient(base, config.token.trim(), key, config.device.trim().ifEmpty { HubConfig.DEFAULT_DEVICE })
         }
 
-        private val TEXT = "text/plain; charset=utf-8".toMediaType()
-        private val BINARY = "application/octet-stream".toMediaType()
+        /** For a hub that isn't saved yet: pairing and setting up. */
+        fun to(hub: String, token: String, key: Seal.Key, device: String): HubClient? {
+            val base = Seal.normalizeUrl(hub)?.let { "$it/".toHttpUrlOrNull() } ?: return null
+            return HubClient(base, token.trim(), key, device.trim().ifEmpty { HubConfig.DEFAULT_DEVICE })
+        }
+
+        /** Pictures every device can show; anything else goes as a file. */
+        val INLINE_IMAGES = setOf("image/png", "image/jpeg", "image/gif", "image/webp", "image/avif", "image/bmp")
+        private val EXTENSIONS = mapOf(
+            "image/png" to "png", "image/jpeg" to "jpg", "image/gif" to "gif", "image/webp" to "webp",
+            "image/avif" to "avif", "image/bmp" to "bmp", "text/plain" to "txt",
+        )
+
+        fun stamp(): String = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(Date())
+
+        private val SEALED = Seal.CONTENT_TYPE.toMediaType()
+        private val JSON = "application/json".toMediaType()
         private val EMPTY = ByteArray(0).toRequestBody()
 
         private val http: OkHttpClient = OkHttpClient.Builder()

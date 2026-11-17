@@ -53,6 +53,11 @@ android {
     buildFeatures {
         compose = true
     }
+
+    // The instrumented tests check the code detector against the shared
+    // corpus on a real device, whose regular expressions (ICU) differ from
+    // the JVM's that the unit tests use.
+    sourceSets["androidTest"].assets.srcDir("../../spec")
 }
 
 kotlin {
@@ -80,10 +85,11 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    // Pairing: drawing QR codes, and Google's scanner (no camera permission needed).
+    implementation("com.google.zxing:core:3.5.3")
+    implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
 
     testImplementation("junit:junit:4.13.2")
-    // android.jar only carries stubs of org.json; tests need the real thing.
-    testImplementation("org.json:json:20240303")
 
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")

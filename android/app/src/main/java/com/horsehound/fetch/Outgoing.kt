@@ -8,11 +8,6 @@ import android.webkit.MimeTypeMap
 import java.io.InputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.MediaType
-import okhttp3.MediaType.Companion.toMediaTypeOrNull
-import okhttp3.RequestBody
-import okio.BufferedSink
-import okio.source
 
 /**
  * Sends whatever a content URI points at. The photo picker, the clipboard and
@@ -26,10 +21,10 @@ object Outgoing {
             Triple(name, mimeType(resolver, uri, name), head(resolver, uri))
         }
 
-        // Pictures other devices can open go out exactly as they are; the hub names them.
+        // Pictures other devices can open go out exactly as they are, under a fresh name.
         val friendly = ImagePrep.sniff(head)
         if (friendly != null) {
-            client.sendBody(UriBody(resolver, uri, friendly.mime.toMediaTypeOrNull()), name = null)
+            client.sendStream(name = null, mime = friendly.mime, size = null) { open(resolver, uri) }
             return
         }
         if (mime?.startsWith("image/") == true) {
@@ -41,8 +36,11 @@ object Outgoing {
                 return
             }
         }
-        // Everything else is a file: videos, PDFs, archives, documents.
-        client.sendBody(UriBody(resolver, uri, (mime ?: "application/octet-stream").toMediaTypeOrNull()), name)
+        // Everything else is a file: videos, PDFs, archives, documents. A
+        // picture that isn't one of the shared formats (and couldn't be
+        // converted) goes as a file too, so nobody expects it inline.
+        val type = (mime ?: "application/octet-stream").takeUnless { it in HubClient.INLINE_IMAGES } ?: "application/octet-stream"
+        client.sendStream(name = name ?: "file-${HubClient.stamp()}", mime = type, size = null) { open(resolver, uri) }
     }
 
     private fun displayName(resolver: ContentResolver, uri: Uri): String? {
@@ -98,21 +96,5 @@ object Outgoing {
         open(resolver, uri).use { it.readBytes() }
     } catch (e: OutOfMemoryError) {
         null
-    }
-
-    /**
-     * Streams straight from the other app. The length is left open on purpose:
-     * what apps report as a file's size isn't reliable enough to promise the hub.
-     */
-    private class UriBody(
-        private val resolver: ContentResolver,
-        private val uri: Uri,
-        private val type: MediaType?,
-    ) : RequestBody() {
-        override fun contentType(): MediaType? = type
-
-        override fun writeTo(sink: BufferedSink) {
-            open(resolver, uri).source().use { sink.writeAll(it) }
-        }
     }
 }
