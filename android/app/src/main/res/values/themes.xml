@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Only what shows before Compose draws; the app's colours live in ui/Theme.kt. -->
+    <style name="Theme.Fetch" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/graphite</item>
+    </style>
+
+    <!-- The share sheet target floats over the app that shared. -->
+    <style name="Theme.Fetch.Share" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:backgroundDimEnabled">true</item>
+    </style>
+</resources>
