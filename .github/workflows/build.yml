@@ -7,6 +7,7 @@ on:
       - "Share/**"
       - "Shared/**"
       - "hub/**"
+      - "desktop/**"
       - "docker-compose*.yml"
       - "project.yml"
       - ".github/workflows/build.yml"
@@ -103,9 +104,69 @@ jobs:
           name: app
           path: Fetch.ipa
 
-  # Public download links: the app for the phone, the hub for the server.
+  # The desktop app for Windows, macOS and Linux. Each system builds its own
+  # installer; none of them is signed with a paid developer certificate.
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            flags: --linux
+          - os: windows-latest
+            flags: --win
+          - os: macos-15
+            flags: --mac --x64 --arm64
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - run: npm ci
+
+      # Linux also drives the real app against a real hub: hotkey command,
+      # paste, Throw, background upload, full window, settings.
+      - uses: actions/setup-go@v5
+        if: runner.os == 'Linux'
+        with:
+          go-version: stable
+          cache: false
+
+      - name: Test against a hub (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q libarchive-tools xvfb
+          (cd ../hub && go build -o /tmp/fetch-hub .)
+          FETCH_HUB_BIN=/tmp/fetch-hub npm test
+          FETCH_HUB_BIN=/tmp/fetch-hub xvfb-run -a npm run test:e2e
+
+      - name: Unit tests
+        if: runner.os != 'Linux'
+        run: npm test
+
+      - name: Package
+        run: npx electron-builder ${{ matrix.flags }} --publish never -c.extraMetadata.version="$APP_VERSION"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ runner.os }}
+          if-no-files-found: error
+          path: |
+            desktop/dist/Fetch-desktop-*
+            !desktop/dist/*.blockmap
+
+  # Public download links: the apps for phone and computer, the hub for the server.
   release:
-    needs: [hub, app]
+    needs: [hub, app, desktop]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:

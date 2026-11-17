@@ -2,13 +2,16 @@
 
 Move text, pictures and files between your iPhone, your Linux laptop and your Windows PC. One feed, live on every device, that cleans up after itself.
 
-Three parts:
+The parts:
 
 - **Hub** (`hub/`): one small program you host yourself, on a Proxmox container at home or a small VPS. It stores the feed and serves the web page.
-- **Web page**: what the laptop and the PC use. Open the hub's address in any browser. Nothing to install.
+- **Desktop app** (`desktop/`): for Windows, macOS and Linux. A hotkey pops up a small Throw box; paste, hit Throw, and it uploads in the background. Its full window is the web page.
+- **Web page**: the same feed in any browser. Nothing to install.
 - **iPhone app** (`Sources/`, `Share/`): the feed, a Paste button, a photo picker, and "Fetch" in the share sheet.
 
 Unpinned items delete themselves after 7 days. Pin what you want to keep.
+
+Shell commands and code are recognised, with their language, and shown as highlighted code blocks on every device.
 
 ## 1. Run the hub
 
@@ -63,13 +66,40 @@ The token is the only lock on the feed: anyone who has the address and the token
 
 ## 2. Laptop and PC
 
+### Desktop app
+
+Download the build for your system from the latest [release](../../releases/latest):
+
+| System | File | Install |
+|---|---|---|
+| Windows | `Fetch-desktop-win-x64.exe` | Run it. Windows warns about an unknown publisher: **More info → Run anyway**. |
+| macOS | `Fetch-desktop-mac-arm64.dmg` (Apple silicon) or `-x64.dmg` (Intel) | Drag Fetch to Applications. On first start macOS blocks it: **System Settings → Privacy & Security → Open Anyway**. |
+| Arch, CachyOS | `Fetch-desktop-linux-x64.pacman` | `sudo pacman -U Fetch-desktop-linux-x64.pacman` |
+| Debian, Ubuntu | `Fetch-desktop-linux-amd64.deb` | `sudo apt install ./Fetch-desktop-linux-amd64.deb` |
+| Other Linux | `Fetch-desktop-linux-x86_64.AppImage` | `chmod +x` it and run it. |
+
+The warnings on Windows and macOS are there because the builds aren't signed with a paid developer certificate.
+
+On first start, enter the hub address and token. After that the app sits in the tray:
+
+- **Ctrl+Alt+F** (changeable in Settings) opens the **Throw** box wherever you are. Type or paste text, pictures or files, press **Enter** or **Throw**. The box closes at once and the upload runs in the background. If the hub can't be reached you get a notification and your draft is back in the box.
+- **Open Fetch** in the box or the tray opens the full window: the feed, live, exactly as in the browser. Here the Copy button works on pictures even when the hub is plain http.
+- **Esc** or a click outside closes the box and keeps what you typed.
+- Settings also has "Start Fetch when I log in".
+
+**Linux on Wayland:** whether an app may claim a global shortcut is up to the desktop. If Ctrl+Alt+F does nothing, add a custom shortcut in your system's keyboard settings that runs `fetch-desktop --throw` (for the AppImage: the path to the file, then `--throw`). That works everywhere.
+
+The app has been driven end to end on Linux. The Windows and macOS builds come out of the same code and the same build, but nobody has tried them on a real machine yet; please open an issue if something is off.
+
+### In a browser
+
 Open `http://<hub-address>:8787`, enter the token once, and keep the tab pinned.
 
 - **Ctrl+V anywhere** on the page sends what's on your clipboard: text, a screenshot, a copied image.
 - **Drag files** onto the page to send them.
 - **Click a text item** to copy it. **Save** downloads a picture or file.
 
-Copying a *picture* straight to the clipboard needs the page to be served over https; browsers don't allow it on plain http. Everything else works either way. With the VPS setup above, or any hub behind https, the Copy button appears on pictures.
+Copying a *picture* straight to the clipboard needs the page to be served over https; browsers don't allow it on plain http. Everything else works either way. With the VPS setup above, any hub behind https, or the desktop app, the Copy button appears on pictures.
 
 ### From the terminal (optional)
 
@@ -126,7 +156,7 @@ Everything is plain HTTP with `Authorization: Bearer <token>`.
 
 | | |
 |---|---|
-| `GET /api/items` | the feed, newest first |
+| `GET /api/items` | the feed, newest first. Text the hub recognises as code also carries `lang`, `lang_label` and `tokens` (the text split into `[class, text]` pairs for highlighting) |
 | `POST /api/items` | `text/plain` body → text; any other body (optional `?name=`) → picture or file; `multipart/form-data` also works |
 | `GET /api/items/{id}/raw` | the content (`?dl=1` forces a download) |
 | `PUT /api/items/{id}/pin?on=1` | pin or unpin (`on=0`) |
@@ -144,4 +174,10 @@ curl -H "Authorization: Bearer $TOKEN" --data-binary @photo.jpg "http://hub:8787
 cd hub && go test ./... && go build -o fetch .
 ```
 
-The app is built by `.github/workflows/build.yml` on a macOS runner: `xcodegen generate` creates the Xcode project from `project.yml`, and the result is packaged unsigned for SideStore. Fork the repo and the same workflow builds your own copy.
+```sh
+cd desktop && npm install && npm start          # run the desktop app from source
+FETCH_HUB_BIN=../hub/fetch npm test             # its unit tests
+FETCH_HUB_BIN=../hub/fetch xvfb-run -a npm run test:e2e   # the real app against a real hub (Linux)
+```
+
+Everything is built by `.github/workflows/build.yml`: the hub on Linux, the desktop app on Windows, macOS and Linux runners, and the iPhone app on a macOS runner (`xcodegen generate` creates the Xcode project from `project.yml`; the result is packaged unsigned for SideStore). Fork the repo and the same workflow builds your own copies.

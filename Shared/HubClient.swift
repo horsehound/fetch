@@ -11,6 +11,17 @@ struct Item: Codable, Identifiable, Equatable {
     var created: Double       // unix milliseconds
     var pinned: Bool
 
+    // Set by the hub when a text item is code: the language, its display
+    // name, and the text split into [highlight class, text] pairs.
+    var lang: String?
+    var langLabel: String?
+    var tokens: [[String]]?
+
+    enum CodingKeys: String, CodingKey {
+        case id, kind, text, name, mime, size, device, created, pinned, lang, tokens
+        case langLabel = "lang_label"
+    }
+
     var date: Date { Date(timeIntervalSince1970: created / 1000) }
     var isText: Bool { kind == "text" }
     var isImage: Bool { kind == "image" }

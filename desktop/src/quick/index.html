@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; script-src 'self'; img-src blob:">
+<meta name="color-scheme" content="dark">
+<title>Throw</title>
+<link rel="stylesheet" href="quick.css">
+</head>
+<body>
+  <main class="card" id="card">
+    <textarea id="text" rows="1" placeholder="Paste or type something to throw" aria-label="What to throw" autofocus></textarea>
+    <ul class="files" id="files" aria-label="Attached files"></ul>
+    <footer>
+      <button class="link" id="open" type="button">Open Fetch</button>
+      <button class="icon" id="settings" type="button" aria-label="Settings" title="Settings">
+        <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M3 6h7m4 0h3M3 14h3m4 0h7"/><circle cx="12" cy="6" r="2" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="8" cy="14" r="2" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+      </button>
+      <span class="grow"></span>
+      <span class="hint" id="hint">Enter</span>
+      <button class="primary" id="throw" type="button" disabled>Throw</button>
+    </footer>
+  </main>
+  <script src="quick.js"></script>
+</body>
+</html>

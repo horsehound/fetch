@@ -8,7 +8,8 @@ struct FetchApp: App {
         WindowGroup {
             FeedView()
                 .environmentObject(model)
-                .tint(Color.primary)
+                .tint(Theme.lime)
+                .preferredColorScheme(.dark)
         }
     }
 }

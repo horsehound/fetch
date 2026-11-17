@@ -28,6 +28,13 @@ type Item struct {
 	Device  string `json:"device,omitempty"`
 	Created int64  `json:"created"` // unix milliseconds
 	Pinned  bool   `json:"pinned"`
+
+	// Filled in when the feed is listed, never stored: set when a text item
+	// is code. Lang is an id such as "bash", LangLabel its display name, and
+	// Tokens the text split into highlight classes (see highlight.go).
+	Lang      string `json:"lang,omitempty"`
+	LangLabel string `json:"lang_label,omitempty"`
+	Tokens    []Tok  `json:"tokens,omitempty"`
 }
 
 type Store struct {

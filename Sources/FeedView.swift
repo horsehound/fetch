@@ -20,6 +20,8 @@ struct FeedView: View {
                 .toolbar { toolbar }
                 .safeAreaInset(edge: .bottom, spacing: 0) { composer }
                 .overlay(alignment: .top) { toastView }
+                .background(Theme.graphite)
+                .toolbarBackground(Theme.graphite, for: .navigationBar)
         }
         .sheet(isPresented: $showSettings) {
             SettingsView().environmentObject(model)
@@ -62,13 +64,15 @@ struct FeedView: View {
                 if let problem = model.problem {
                     Label(problem, systemImage: "exclamationmark.triangle")
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.fuchsia)
                         .listRowSeparator(.hidden)
+                        .listRowBackground(Theme.graphite)
                 }
                 ForEach(model.ordered) { item in
                     ItemRow(item: item)
                         .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                         .listRowSeparator(.hidden)
+                        .listRowBackground(Theme.graphite)
                         .swipeActions(edge: .trailing) {
                             Button(role: .destructive) {
                                 Task { await model.delete(item) }
@@ -87,6 +91,7 @@ struct FeedView: View {
                 }
             }
             .listStyle(.plain)
+            .scrollContentBackground(.hidden)
             .scrollDismissesKeyboard(.immediately)
             .refreshable { await model.refresh() }
             .overlay {
@@ -107,11 +112,11 @@ struct FeedView: View {
         ToolbarItem(placement: .topBarLeading) {
             HStack(spacing: 6) {
                 Circle()
-                    .fill(model.live ? Color.primary : Color.secondary.opacity(0.4))
+                    .fill(model.live ? Theme.lime : Theme.fuchsia)
                     .frame(width: 7, height: 7)
                 Text(model.sending > 0 ? "sending" : model.live ? "live" : "offline")
                     .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.muted)
             }
             .accessibilityElement(children: .combine)
         }
@@ -135,15 +140,16 @@ struct FeedView: View {
                 }
                 .labelStyle(.titleAndIcon)
                 .buttonBorderShape(.capsule)
-                // A fixed colour: the system only honours this button while its label stays readable.
-                .tint(Color(uiColor: .darkGray))
+                // Indigo keeps the white label readable, which the system requires of this button.
+                .tint(Theme.indigo)
 
                 PhotosPicker(selection: $picked, maxSelectionCount: 20, matching: .images) {
                     Label("Photos", systemImage: "photo.on.rectangle")
                         .font(.subheadline.weight(.medium))
                         .padding(.horizontal, 14)
                         .frame(height: 34)
-                        .background(Color(uiColor: .secondarySystemBackground), in: Capsule())
+                        .background(Theme.card, in: Capsule())
+                        .overlay { Capsule().strokeBorder(Theme.line, lineWidth: 1) }
                 }
                 Spacer(minLength: 0)
             }
@@ -153,7 +159,8 @@ struct FeedView: View {
                     .focused($typing)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 9)
-                    .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18))
+                    .background(Theme.card, in: RoundedRectangle(cornerRadius: 18))
+                    .overlay { RoundedRectangle(cornerRadius: 18).strokeBorder(Theme.line, lineWidth: 1) }
                 Button {
                     let text = draft
                     draft = ""
@@ -170,16 +177,18 @@ struct FeedView: View {
         .padding(.horizontal, 16)
         .padding(.top, 10)
         .padding(.bottom, 8)
-        .background(.bar)
+        .background(Theme.graphite)
+        .overlay(alignment: .top) { Rectangle().fill(Theme.line).frame(height: 1) }
     }
 
     @ViewBuilder private var toastView: some View {
         if let toast = model.toast {
             Text(toast)
                 .font(.subheadline.weight(.medium))
+                .foregroundStyle(.white)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 9)
-                .background(.thinMaterial, in: Capsule())
+                .background(Theme.indigo, in: Capsule())
                 .padding(.top, 8)
                 .transition(.opacity)
         }

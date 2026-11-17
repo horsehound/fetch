@@ -1,0 +1,81 @@
+{
+  "name": "fetch-desktop",
+  "productName": "Fetch",
+  "version": "1.0.0",
+  "description": "Throw text, pictures and files at your Fetch hub from a hotkey.",
+  "author": {
+    "name": "horsehound",
+    "email": "horsehound@users.noreply.github.com"
+  },
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/unit.test.js",
+    "test:e2e": "node test/e2e.js",
+    "dist": "electron-builder --publish never"
+  },
+  "devDependencies": {
+    "electron": "45.3.3",
+    "electron-builder": "26.18.0",
+    "playwright-core": "^1.65.1"
+  },
+  "desktopName": "com.horsehound.fetch.desktop",
+  "build": {
+    "appId": "com.horsehound.fetch",
+    "productName": "Fetch",
+    "files": [
+      "src/**",
+      "assets/**"
+    ],
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "artifactName": "Fetch-desktop-${os}-${arch}.${ext}",
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.utilities",
+      "identity": "-",
+      "hardenedRuntime": false,
+      "notarize": false
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "pacman",
+        "deb"
+      ],
+      "category": "Utility",
+      "executableName": "fetch-desktop",
+      "synopsis": "Throw text, pictures and files at your Fetch hub",
+      "maintainer": "horsehound",
+      "syncDesktopName": true,
+      "icon": "build/icons"
+    },
+    "pacman": {
+      "depends": [
+        "gtk3",
+        "nss",
+        "alsa-lib"
+      ]
+    }
+  },
+  "homepage": "https://github.com/horsehound/fetch",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/horsehound/fetch.git"
+  }
+}

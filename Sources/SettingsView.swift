@@ -38,7 +38,7 @@ struct SettingsView: View {
                 if let failure {
                     Section {
                         Label(failure, systemImage: "exclamationmark.triangle")
-                            .foregroundStyle(.red)
+                            .foregroundStyle(Theme.fuchsia)
                         Button("Save anyway") {
                             model.apply(draft)
                             dismiss()

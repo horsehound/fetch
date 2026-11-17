@@ -12,16 +12,25 @@ struct ItemRow: View {
             content
             footer
         }
-        .background(Color(uiColor: .secondarySystemGroupedBackground))
+        .background(Theme.card)
         .clipShape(shape)
-        .overlay { shape.strokeBorder(item.pinned ? Color.primary : Color(uiColor: .separator), lineWidth: 1) }
+        .overlay { shape.strokeBorder(item.pinned ? Theme.lime : Theme.line, lineWidth: 1) }
         .contextMenu { menu }
     }
 
     // MARK: content
 
     @ViewBuilder private var content: some View {
-        if item.isText {
+        if item.isText, let code {
+            Button {
+                Task { await model.copy(item) }
+            } label: {
+                codeBlock(code)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(item.langLabel ?? "Code"): \(item.text ?? "")")
+            .accessibilityHint("Copies this code")
+        } else if item.isText {
             Button {
                 Task { await model.copy(item) }
             } label: {
@@ -51,14 +60,14 @@ struct ItemRow: View {
                 HStack(spacing: 12) {
                     Image(systemName: "doc")
                         .font(.title2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.indigoSoft)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(item.name ?? "File")
                             .lineLimit(1)
                             .truncationMode(.middle)
                         Text(ByteCountFormatter.string(fromByteCount: Int64(item.size), countStyle: .file))
                             .font(.caption.monospaced())
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.muted)
                     }
                     Spacer(minLength: 0)
                 }
@@ -76,11 +85,12 @@ struct ItemRow: View {
             if item.pinned {
                 Image(systemName: "pin.fill")
                     .font(.caption2)
+                    .foregroundStyle(Theme.lime)
                     .accessibilityLabel("Pinned")
             }
             Text(caption)
                 .font(.caption.monospaced())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.muted)
                 .lineLimit(1)
             Spacer(minLength: 8)
             if item.isText {
@@ -116,7 +126,7 @@ struct ItemRow: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.borderless)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(Theme.muted)
         .accessibilityLabel(label)
     }
 
@@ -130,6 +140,45 @@ struct ItemRow: View {
             Task { await model.togglePin(item) }
         }
         Button("Delete", systemImage: "trash", role: .destructive) { Task { await model.delete(item) } }
+    }
+
+    // MARK: code
+
+    /// The item's text with the hub's highlight classes applied as colours,
+    /// or nil when the hub did not recognise it as code.
+    private var code: AttributedString? {
+        guard let tokens = item.tokens, !tokens.isEmpty else { return nil }
+        var out = AttributedString()
+        for token in tokens where token.count == 2 {
+            var part = AttributedString(token[1])
+            part.swiftUI.foregroundColor = Theme.code(token[0])
+            if token[0] == "add" { part.swiftUI.backgroundColor = Theme.lime.opacity(0.1) }
+            if token[0] == "del" { part.swiftUI.backgroundColor = Theme.fuchsia.opacity(0.12) }
+            out.append(part)
+        }
+        return out
+    }
+
+    /// Darker inset, monospace, language chip: unmistakably not plain text.
+    private func codeBlock(_ code: AttributedString) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text((item.langLabel ?? item.lang ?? "Code").uppercased())
+                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(Theme.indigo, in: RoundedRectangle(cornerRadius: 5))
+            Text(code)
+                .font(.system(.footnote, design: .monospaced))
+                .lineLimit(expanded ? nil : 8)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.inset)
+        .contentShape(Rectangle())
     }
 
     // MARK: helpers
@@ -172,7 +221,7 @@ struct HubImage: View {
                     .scaledToFit()
                     .frame(maxWidth: .infinity, maxHeight: 380)
             } else {
-                Color(uiColor: .tertiarySystemFill)
+                Theme.inset
                     .frame(height: 180)
                 if failed {
                     Image(systemName: "photo")
@@ -183,7 +232,7 @@ struct HubImage: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .background(Color(uiColor: .tertiarySystemFill))
+        .background(Theme.inset)
         .task(id: item.id) {
             let loaded = await model.thumbnail(for: item)
             image = loaded

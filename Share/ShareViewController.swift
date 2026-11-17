@@ -18,7 +18,11 @@ final class ShareViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = UIColor.black.withAlphaComponent(0.3)
+        // Same palette as the app: graphite card, lime accents.
+        let graphite = UIColor(red: 0x24 / 255, green: 0x24 / 255, blue: 0x24 / 255, alpha: 1)
+        let lime = UIColor(red: 0xCF / 255, green: 0xFF / 255, blue: 0x04 / 255, alpha: 1)
+        overrideUserInterfaceStyle = .dark
+        view.backgroundColor = UIColor.black.withAlphaComponent(0.4)
 
         label.text = "Sending"
         label.font = .preferredFont(forTextStyle: .headline)
@@ -26,9 +30,11 @@ final class ShareViewController: UIViewController {
         label.numberOfLines = 0
 
         closeButton.setTitle("Close", for: .normal)
+        closeButton.tintColor = lime
         closeButton.isHidden = true
         closeButton.addTarget(self, action: #selector(close), for: .touchUpInside)
 
+        spinner.color = lime
         spinner.startAnimating()
 
         let stack = UIStackView(arrangedSubviews: [spinner, label, closeButton])
@@ -37,7 +43,7 @@ final class ShareViewController: UIViewController {
         stack.alignment = .center
         stack.isLayoutMarginsRelativeArrangement = true
         stack.layoutMargins = UIEdgeInsets(top: 24, left: 24, bottom: 20, right: 24)
-        stack.backgroundColor = .secondarySystemBackground
+        stack.backgroundColor = graphite
         stack.layer.cornerRadius = 18
         stack.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(stack)

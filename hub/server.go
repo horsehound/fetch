@@ -41,6 +41,8 @@ type server struct {
 
 	mu   sync.Mutex
 	subs map[chan struct{}]struct{}
+
+	code analyser
 }
 
 func runServe(args []string) {
@@ -170,7 +172,9 @@ func (s *server) handleInfo(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleList(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"items": s.store.List()})
+	items := s.store.List()
+	s.code.annotate(items)
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
 // handleCreate accepts three shapes:

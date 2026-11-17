@@ -3,20 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light dark">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#1c1c1c">
 <title>fetch</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7'/%3E%3Ccircle cx='16' cy='16' r='8' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231c1c1c'/%3E%3Ccircle cx='16' cy='16' r='8' fill='%23cfff04'/%3E%3C/svg%3E">
 <style>
+  /* Palette: Graphite Black, Cyber Lime, Electric Indigo, Neon Fuchsia. One dark theme. */
   :root {
-    --bg: #f7f7f5; --card: #fff; --fg: #121212; --muted: #74746f; --line: #e3e3de;
-    --inverse-bg: #121212; --inverse-fg: #fff; --danger: #b3261e;
+    --bg: #1c1c1c; --card: #242424; --inset: #151515; --fg: #f5f5f2; --muted: #9a9a94; --line: #393939;
+    --lime: #cfff04; --indigo: #5d00ff; --fuchsia: #ff2e9a;
+    --lime-soft: #e6ff7a; --indigo-soft: #b79cff; --fuchsia-soft: #ff8cc8; /* tints, readable as text on graphite */
     --mono: ui-monospace, "JetBrains Mono", "Cascadia Mono", Menlo, Consolas, monospace;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #0d0d0d; --card: #151515; --fg: #ededea; --muted: #8a8a85; --line: #272727;
-      --inverse-bg: #ededea; --inverse-fg: #0d0d0d; --danger: #f2b8b5;
-    }
   }
   * { box-sizing: border-box; }
   html { -webkit-text-size-adjust: 100%; }
@@ -26,18 +23,21 @@
   }
   button, textarea, input { font: inherit; color: inherit; }
   button { cursor: pointer; }
-  :focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+  :focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }
+  ::selection { background: var(--indigo); color: #fff; }
   [hidden] { display: none !important; }
 
   main { max-width: 720px; margin: 0 auto; padding: 20px 16px 96px; }
 
   header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 4px 2px 16px; }
   .mark { font: 600 20px/1 var(--mono); letter-spacing: -0.02em; }
+  .mark::after { content: ""; display: inline-block; width: 9px; height: 9px; margin-left: 5px; border-radius: 50%; background: var(--lime); }
   .status { font: 12px/1 var(--mono); color: var(--muted); display: flex; align-items: center; gap: 7px; }
-  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
-  .dot.live { background: var(--fg); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--fuchsia); }
+  .dot.live { background: var(--lime); box-shadow: 0 0 8px rgba(207, 255, 4, 0.6); }
 
   .composer { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 12px 10px; }
+  .composer:focus-within { border-color: var(--indigo); box-shadow: 0 0 0 3px rgba(93, 0, 255, 0.28); }
   .composer textarea {
     display: block; width: 100%; min-height: 24px; max-height: 40vh; resize: none;
     border: 0; background: transparent; outline: none; padding: 2px;
@@ -50,28 +50,46 @@
     border: 1px solid var(--line); background: transparent; border-radius: 8px;
     padding: 6px 12px; font-size: 14px; white-space: nowrap;
   }
-  .btn:hover { border-color: var(--fg); }
-  .btn.primary { background: var(--inverse-bg); color: var(--inverse-fg); border-color: var(--inverse-bg); }
-  .btn.primary:disabled { opacity: 0.35; cursor: default; }
+  .btn:hover { border-color: var(--lime); }
+  .btn.primary { background: var(--lime); color: var(--bg); border-color: var(--lime); font-weight: 600; }
+  .btn.primary:disabled { opacity: 0.3; cursor: default; }
 
   .feed { list-style: none; margin: 20px 0 0; padding: 0; display: grid; gap: 10px; }
   .item { background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
-  .item.pinned { border-color: var(--fg); }
+  .item.pinned { border-color: var(--lime); }
 
   .text {
     display: block; width: 100%; text-align: left; border: 0; background: transparent;
     padding: 12px 14px 4px; white-space: pre-wrap; overflow-wrap: anywhere; cursor: copy;
   }
   .text.clamped { max-height: 13.5em; overflow: hidden; -webkit-mask-image: linear-gradient(#000 70%, transparent); mask-image: linear-gradient(#000 70%, transparent); }
-  .text.code { font: 13px/1.5 var(--mono); }
 
-  .shot { display: block; background: var(--bg); border-bottom: 1px solid var(--line); text-align: center; }
+  /* A code item: darker inset, monospace, language chip, coloured tokens. */
+  .code { position: relative; background: var(--inset); border-bottom: 1px solid var(--line); }
+  .code .text { font: 13px/1.6 var(--mono); padding: 32px 14px 12px; tab-size: 4; } /* top room for the language chip */
+  .code .text.clamped { max-height: 15.5em; }
+  .lang {
+    position: absolute; top: 8px; right: 8px; pointer-events: none;
+    padding: 3px 7px; border-radius: 5px; background: var(--indigo); color: #fff;
+    font: 600 10px/1.2 var(--mono); letter-spacing: 0.05em; text-transform: uppercase;
+  }
+  .t-kw { color: var(--fuchsia); }
+  .t-str { color: var(--lime-soft); }
+  .t-com { color: #7d7d77; font-style: italic; }
+  .t-num, .t-typ, .t-var { color: var(--indigo-soft); }
+  .t-fn, .t-key { color: var(--lime); }
+  .t-attr { color: var(--fuchsia-soft); }
+  .t-meta { color: #7d7d77; }
+  .t-add { color: var(--lime); background: rgba(207, 255, 4, 0.1); }
+  .t-del { color: var(--fuchsia); background: rgba(255, 46, 154, 0.12); }
+
+  .shot { display: block; background: var(--inset); border-bottom: 1px solid var(--line); text-align: center; }
   .shot img { display: block; max-width: 100%; max-height: 420px; margin: 0 auto; }
 
   .file { display: flex; align-items: center; gap: 12px; padding: 12px 14px 4px; min-width: 0; }
   .file .ext {
-    flex: none; min-width: 44px; padding: 8px 6px; border: 1px solid var(--line); border-radius: 6px;
-    font: 600 11px/1 var(--mono); text-align: center; text-transform: uppercase;
+    flex: none; min-width: 44px; padding: 8px 6px; border: 1px solid var(--indigo); border-radius: 6px;
+    font: 600 11px/1 var(--mono); text-align: center; text-transform: uppercase; color: var(--indigo-soft);
   }
   .file .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .file .size { font: 12px/1.4 var(--mono); color: var(--muted); }
@@ -83,28 +101,28 @@
     border: 0; background: transparent; border-radius: 6px; padding: 4px 8px;
     font-size: 13px; color: var(--muted); text-decoration: none;
   }
-  .act:hover { color: var(--fg); background: var(--bg); }
-  .act.danger:hover { color: var(--danger); }
-  .act.on { color: var(--fg); font-weight: 600; }
+  .act:hover { color: var(--lime); background: var(--bg); }
+  .act.danger:hover { color: var(--fuchsia); }
+  .act.on { color: var(--lime); font-weight: 600; }
 
   .empty { margin-top: 56px; text-align: center; color: var(--muted); }
   .empty b { display: block; color: var(--fg); font-weight: 600; margin-bottom: 4px; }
 
   footer { margin-top: 28px; font: 12px/1.7 var(--mono); color: var(--muted); text-align: center; }
   footer button { border: 0; background: none; padding: 0; color: inherit; text-decoration: underline; text-underline-offset: 3px; }
-  footer button:hover { color: var(--fg); }
+  footer button:hover { color: var(--lime); }
 
   .toast {
     position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%);
-    background: var(--inverse-bg); color: var(--inverse-fg); border-radius: 999px;
-    padding: 8px 16px; font-size: 14px; max-width: calc(100vw - 32px);
+    background: var(--indigo); color: #fff; border-radius: 999px;
+    padding: 8px 16px; font-size: 14px; font-weight: 500; max-width: calc(100vw - 32px);
     opacity: 0; pointer-events: none; transition: opacity 0.15s;
   }
   .toast.show { opacity: 1; }
 
   .drop {
-    position: fixed; inset: 12px; border: 2px dashed var(--fg); border-radius: 16px;
-    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    position: fixed; inset: 12px; border: 2px dashed var(--lime); border-radius: 16px;
+    background: rgba(28, 28, 28, 0.9); color: var(--lime);
     display: grid; place-items: center; font: 600 18px/1 var(--mono); z-index: 5;
   }
 
@@ -112,7 +130,7 @@
   .login form { width: min(340px, 100%); display: grid; gap: 12px; }
   .login p { margin: 0; color: var(--muted); }
   .login input { border: 1px solid var(--line); background: var(--card); border-radius: 8px; padding: 10px 12px; font-family: var(--mono); }
-  .login .err { color: var(--danger); min-height: 1.5em; }
+  .login .err { color: var(--fuchsia); min-height: 1.5em; }
 
   @media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
 </style>
@@ -188,6 +206,12 @@ function guessDevice() {
   if (/Mac OS X/.test(ua)) return 'Mac';
   if (/Linux/.test(ua)) return 'Linux laptop';
   return 'Browser';
+}
+// The desktop app opens the page as /?device=Name so both show the same name.
+const named = (new URLSearchParams(location.search).get('device') || '').trim();
+if (named) {
+  store.set('fetch.device', named.slice(0, 40));
+  history.replaceState(null, '', location.pathname);
 }
 let device = store.get('fetch.device') || guessDevice();
 
@@ -322,7 +346,6 @@ async function copyImage(item) {
 // ---- the feed ----
 const rawURL = (item, dl) => '/api/items/' + item.id + '/raw' + (dl ? '?dl=1' : '');
 const isLink = (t) => /^https?:\/\/\S+$/.test(t.trim());
-const looksLikeCode = (t) => /^[ \t]{2,}\S/m.test(t) || /[{};]\s*$/m.test(t);
 
 function size(n) {
   if (n < 1000) return n + ' B';
@@ -350,9 +373,15 @@ function build(item) {
   };
 
   if (item.kind === 'text') {
-    const body = el('button', { class: 'text', type: 'button', title: 'Click to copy', text: item.text, onclick: () => copyText(item.text).catch(fail) });
-    if (looksLikeCode(item.text)) body.classList.add('code');
-    li.append(body);
+    const body = el('button', { class: 'text', type: 'button', title: 'Click to copy', onclick: () => copyText(item.text).catch(fail) });
+    if (item.tokens && item.tokens.length) {
+      // The hub recognised code: it sends the text split into [class, text] pairs.
+      body.append(...item.tokens.map(([cls, text]) => (cls ? el('span', { class: 't-' + cls, text }) : text)));
+      li.append(el('div', { class: 'code' }, el('span', { class: 'lang', text: item.lang_label || item.lang }), body));
+    } else {
+      body.textContent = item.text;
+      li.append(body);
+    }
     if (item.text.length > 700 || item.text.split('\n').length > 9) {
       body.classList.add('clamped');
       const more = act('Show all', () => { body.classList.remove('clamped'); more.remove(); });

@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; script-src 'self'">
+<meta name="color-scheme" content="dark">
+<title>Fetch Settings</title>
+<link rel="stylesheet" href="settings.css">
+</head>
+<body>
+<form id="form" novalidate>
+  <h1>Your hub</h1>
+  <label for="url">Address</label>
+  <input id="url" type="text" inputmode="url" spellcheck="false" autocomplete="off" placeholder="192.168.1.20:8787 or fetch.example.com">
+  <label for="token">Token</label>
+  <input id="token" class="mono" type="text" spellcheck="false" autocomplete="off" placeholder="printed by the hub when it starts">
+
+  <h1>This computer</h1>
+  <label for="device">Name shown next to what you throw</label>
+  <input id="device" type="text" maxlength="40" spellcheck="false" autocomplete="off">
+
+  <label for="hotkey">Shortcut for the Throw box</label>
+  <div class="row">
+    <input id="hotkey" class="mono" type="text" readonly aria-describedby="hotkeyHelp">
+    <button id="clearHotkey" type="button">Clear</button>
+  </div>
+  <p class="help" id="hotkeyHelp">Click the field and press the keys you want.</p>
+
+  <label class="check"><input id="openAtLogin" type="checkbox"> Start Fetch when I log in</label>
+
+  <p class="error" id="error" role="alert"></p>
+  <div class="actions">
+    <button id="force" type="button" hidden>Save anyway</button>
+    <button id="save" class="primary" type="submit">Save</button>
+  </div>
+</form>
+<script src="settings.js"></script>
+</body>
+</html>
