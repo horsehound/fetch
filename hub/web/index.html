@@ -32,9 +32,6 @@
   header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 4px 2px 16px; }
   .mark { font: 600 20px/1 var(--mono); letter-spacing: -0.02em; }
   .mark::after { content: ""; display: inline-block; width: 9px; height: 9px; margin-left: 5px; border-radius: 50%; background: var(--lime); }
-  .status { font: 12px/1 var(--mono); color: var(--muted); display: flex; align-items: center; gap: 7px; }
-  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--fuchsia); }
-  .dot.live { background: var(--lime); box-shadow: 0 0 8px rgba(207, 255, 4, 0.6); }
 
   .composer { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 12px 10px; }
   .composer:focus-within { border-color: var(--indigo); box-shadow: 0 0 0 3px rgba(93, 0, 255, 0.28); }
@@ -139,7 +136,6 @@
 <main>
   <header>
     <span class="mark">fetch</span>
-    <span class="status"><span class="dot" id="dot"></span><span id="status">connecting</span></span>
   </header>
 
   <section class="composer">
@@ -240,11 +236,7 @@ function toast(msg) {
 const fail = (e) => { if (e.message !== 'Locked') toast(e.message); };
 
 // ---- sending ----
-let sending = 0;
-function track(promise) {
-  sending++; paintStatus();
-  return promise.catch(fail).finally(() => { sending--; paintStatus(); });
-}
+const track = (promise) => promise.catch(fail);
 function sendText(text) {
   if (!text.trim()) return Promise.resolve();
   return track(api('/api/items', {
@@ -453,17 +445,11 @@ async function load() {
 setInterval(() => { for (const li of nodes.values()) paint(li, li._item); }, 30000);
 
 // ---- live updates ----
-let live = false, events;
-function paintStatus() {
-  $('dot').classList.toggle('live', live);
-  $('status').textContent = sending ? 'sending ' + sending : live ? 'live' : 'offline';
-}
+let events;
 function connect() {
   if (events) events.close();
-  events = new EventSource('/api/events');
-  events.onopen = () => { live = true; paintStatus(); };
+  events = new EventSource('/api/events'); // reconnects by itself after a drop
   events.onmessage = load; // also fires on (re)connect, which catches up after a gap
-  events.onerror = () => { live = false; paintStatus(); };
 }
 
 // ---- footer ----
@@ -516,7 +502,6 @@ function start() {
 if (/Mac|iPhone|iPad/.test(navigator.userAgent)) $('hint').textContent = $('hint').textContent.replace('Ctrl', '⌘');
 paintDevice();
 fitDraft();
-paintStatus();
 start();
 })();
 </script>

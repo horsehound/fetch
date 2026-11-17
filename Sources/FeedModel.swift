@@ -14,8 +14,6 @@ final class FeedModel: ObservableObject {
     @Published private(set) var items: [Item] = []
     @Published private(set) var config = HubConfig.load()
     @Published private(set) var problem: String?
-    @Published private(set) var live = false
-    @Published private(set) var sending = 0
     @Published var toast: String?
     @Published var sharing: SharedFile?
 
@@ -47,15 +45,13 @@ final class FeedModel: ObservableObject {
                 await self?.refresh()
                 do {
                     let stream = try await client.events()
-                    for try await line in stream.lines where line.hasPrefix("data:") {
-                        self?.live = true
-                        // "hello" only confirms the connection; the feed was just loaded.
-                        if !line.contains("hello") { await self?.refresh() }
+                    // "hello" only confirms the connection; the feed was just loaded.
+                    for try await line in stream.lines where line.hasPrefix("data:") && !line.contains("hello") {
+                        await self?.refresh()
                     }
                 } catch {
                     // Dropped connections are routine (sleep, Wi-Fi changes); retry below.
                 }
-                self?.live = false
                 try? await Task.sleep(nanoseconds: 3_000_000_000)
             }
         }
@@ -64,7 +60,6 @@ final class FeedModel: ObservableObject {
     func stop() {
         liveTask?.cancel()
         liveTask = nil
-        live = false
     }
 
     func refresh() async {
@@ -86,8 +81,6 @@ final class FeedModel: ObservableObject {
             problem = HubError.notSetUp.localizedDescription
             return
         }
-        sending += 1
-        defer { sending -= 1 }
         do {
             try await work(client)
             problem = nil

@@ -109,17 +109,6 @@ struct FeedView: View {
     // MARK: bars
 
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
-        ToolbarItem(placement: .topBarLeading) {
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(model.live ? Theme.lime : Theme.fuchsia)
-                    .frame(width: 7, height: 7)
-                Text(model.sending > 0 ? "sending" : model.live ? "live" : "offline")
-                    .font(.caption.monospaced())
-                    .foregroundStyle(Theme.muted)
-            }
-            .accessibilityElement(children: .combine)
-        }
         ToolbarItem(placement: .topBarTrailing) {
             Menu {
                 Button("Settings", systemImage: "gearshape") { showSettings = true }
