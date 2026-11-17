@@ -188,7 +188,7 @@ private fun ColumnScope.Unpaired(model: FeedModel, onClose: () -> Unit) {
     Spacer(Modifier.height(6.dp))
     HorizontalDivider()
     Spacer(Modifier.height(6.dp))
-    Heading("Setting up a new hub?")
+    Heading("Setting up the first device?")
     Note(
         "Enter the address and token the hub printed when it started. This phone makes the key " +
             "every other device will share; the hub never sees it.",
