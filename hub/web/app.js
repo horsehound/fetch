@@ -685,6 +685,9 @@ async function start() {
   listen();
 }
 
+// The desktop app's "Add a device" opens this page's QR code.
+if (desktop && desktop.onAddDevice) desktop.onAddDevice(() => { if (cfg && !$('app').hidden) openSheet(); });
+
 if (/Mac|iPhone|iPad/.test(navigator.userAgent)) $('hint').textContent = $('hint').textContent.replace('Ctrl', '⌘');
 start();
 })();

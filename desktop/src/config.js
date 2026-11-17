@@ -5,6 +5,7 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { normalizeURL } = require('./seal');
 
 const DEFAULT_HOTKEY = 'Control+Alt+F';
 
@@ -18,33 +19,15 @@ function defaults() {
   };
 }
 
-// Fills in the scheme people leave out: http for an address on a home network
-// (an IP, a port, a bare or .local/.lan name), https for a domain. The hub's
-// command-line client and the iPhone app apply the same rule.
-function normalizeURL(input) {
-  let u = String(input || '').trim().replace(/\/+$/, '');
-  if (!u) return '';
-  if (!u.includes('://')) {
-    const host = u.split('/')[0];
-    const local = host.includes(':') || !host.includes('.') ||
-      host.endsWith('.local') || host.endsWith('.lan') || /^[0-9.]+$/.test(host);
-    u = (local ? 'http://' : 'https://') + u;
-  }
-  try {
-    const parsed = new URL(u);
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return '';
-    return parsed.origin; // the hub always lives at the root of its address
-  } catch {
-    return '';
-  }
-}
-
 function clean(raw) {
   const d = defaults();
   const text = (v, fallback, max) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : fallback);
   return {
     url: normalizeURL(raw.url),
     token: text(raw.token, '', 200),
+    // The encryption key, as in a pairing link. Never leaves this computer
+    // except in a pairing link you copy yourself.
+    key: typeof raw.key === 'string' && /^[A-Za-z0-9_-]{43}$/.test(raw.key.trim()) ? raw.key.trim() : '',
     device: text(raw.device, d.device, 40),
     hotkey: typeof raw.hotkey === 'string' ? raw.hotkey.trim() : d.hotkey, // '' means "no hotkey"
     openAtLogin: raw.openAtLogin === true,
@@ -52,7 +35,7 @@ function clean(raw) {
 }
 
 function isConfigured(cfg) {
-  return Boolean(cfg.url && cfg.token);
+  return Boolean(cfg.url && cfg.token && cfg.key);
 }
 
 function open(file) {
@@ -67,7 +50,7 @@ function open(file) {
     set(next) {
       current = clean({ ...current, ...next });
       fs.mkdirSync(path.dirname(file), { recursive: true });
-      // The token is the key to the feed; keep the file private to this user.
+      // The token and the key unlock the feed; keep the file private to this user.
       fs.writeFileSync(file, JSON.stringify(current, null, 2) + '\n', { mode: 0o600 });
       fs.chmodSync(file, 0o600); // the mode above only applies to a newly created file
       return { ...current };

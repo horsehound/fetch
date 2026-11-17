@@ -8,14 +8,40 @@
 <link rel="stylesheet" href="settings.css">
 </head>
 <body>
-<form id="form" novalidate>
-  <h1>Your hub</h1>
-  <label for="url">Address</label>
-  <input id="url" type="text" inputmode="url" spellcheck="false" autocomplete="off" placeholder="192.168.1.20:8787 or fetch.example.com">
-  <label for="token">Token</label>
-  <input id="token" class="mono" type="text" spellcheck="false" autocomplete="off" placeholder="printed by the hub when it starts">
+<h1>Your hub</h1>
 
-  <h1>This computer</h1>
+<section id="paired" hidden>
+  <p class="status">Paired with <b id="hubName"></b><br>Key <span class="fp" id="fp"></span>, end-to-end encrypted</p>
+  <div class="row">
+    <button id="addDevice" type="button" class="primary">Add a device…</button>
+    <button id="unpair" type="button">Unpair this computer</button>
+  </div>
+</section>
+
+<section id="unpaired" hidden>
+  <label for="link">Pairing link</label>
+  <div class="row">
+    <input id="link" class="mono" type="text" spellcheck="false" autocomplete="off" placeholder="fetchpair://…">
+    <button id="pair" type="button" class="primary">Pair</button>
+  </div>
+  <p class="help">On a device that's set up, open <b>Add a device</b> and copy the pairing link. Paste it here.</p>
+  <details id="first">
+    <summary>Setting up the first device?</summary>
+    <label for="url">Hub address</label>
+    <input id="url" type="text" inputmode="url" spellcheck="false" autocomplete="off" placeholder="192.168.1.20:8787 or fetch.example.com">
+    <label for="token">Token</label>
+    <input id="token" class="mono" type="text" spellcheck="false" autocomplete="off" placeholder="printed by the hub when it starts">
+    <p class="help">This computer creates the encryption key. You add your other devices from here afterwards.</p>
+    <div class="row end">
+      <button id="reset" type="button" class="danger" hidden>Start over (deletes everything on the hub)</button>
+      <button id="setUp" type="button">Set up</button>
+    </div>
+  </details>
+</section>
+<p class="error" id="hubError" role="alert"></p>
+
+<h1>This computer</h1>
+<form id="form" novalidate>
   <label for="device">Name shown next to what you throw</label>
   <input id="device" type="text" maxlength="40" spellcheck="false" autocomplete="off">
 
@@ -30,7 +56,6 @@
 
   <p class="error" id="error" role="alert"></p>
   <div class="actions">
-    <button id="force" type="button" hidden>Save anyway</button>
     <button id="save" class="primary" type="submit">Save</button>
   </div>
 </form>
