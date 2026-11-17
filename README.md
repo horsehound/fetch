@@ -1,6 +1,13 @@
-# Fetch
+<p align="center">
+  <img src=".github/logo.png" width="128" height="128" alt="Fetch logo: a tennis ball in flight">
+</p>
 
-Move text, pictures and files between your iPhone, your Linux laptop and your Windows PC. One feed, live on every device, that cleans up after itself.
+<h1 align="center">Fetch</h1>
+
+<p align="center">
+  Move text, pictures and files between your iPhone and your Windows, macOS and Linux computers.<br>
+  One feed, live on every device, that cleans up after itself. You host it yourself.
+</p>
 
 The parts:
 
