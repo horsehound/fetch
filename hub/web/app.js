@@ -122,7 +122,81 @@ function showSetup(reason) {
   $('setupReason').hidden = !reason;
   $('setupReason').textContent = reason || '';
   $('pairLink').focus();
+  paintJoin();
 }
+
+// ---- making a space of your own (someone else's hub, or a public one) ----
+
+// The code from an invite link (this page's address with #invite=...).
+let invited = (() => {
+  const m = /(?:^#|&)invite=([^&]+)/.exec(location.hash);
+  try { return m ? decodeURIComponent(m[1]).trim() : ''; } catch { return ''; }
+})();
+function forgetInvite() {
+  invited = '';
+  if (location.hash) history.replaceState(null, '', location.pathname + location.search);
+}
+
+// Shows "Make my space" when this hub hands out spaces, or when the page was
+// opened from an invite link.
+async function paintJoin() {
+  let hub = null;
+  try {
+    const res = await fetch('/api/hub');
+    if (res.ok) hub = await res.json();
+  } catch { /* an older hub, or offline: no spaces to offer */ }
+  const mode = hub && hub.mode;
+  if (!invited && mode !== 'invite' && mode !== 'public') { $('joinBox').hidden = true; return; }
+  const room = hub && hub.space_mb > 0 ? ' (' + hub.space_mb + ' MB)' : '';
+  const sealed = ', encrypted with a key only your devices have. Not even whoever runs the hub can read it.';
+  $('joinCode').hidden = mode === 'public' && !invited;
+  if (invited) {
+    $('joinCode').value = invited;
+    $('joinTitle').textContent = "You're invited";
+    $('joinIntro').textContent = 'Make your own space on this hub' + room + sealed;
+    $('pairTitle').textContent = 'Already using Fetch? Pair this browser';
+    $('pairBox').before($('joinBox'));
+    $('joinButton').focus();
+  } else if (mode === 'public') {
+    $('joinIntro').textContent = 'Make your own space on this hub' + room + sealed;
+  } else {
+    $('joinIntro').textContent = 'With an invite code from whoever runs this hub, you get your own space here' + room + sealed;
+  }
+  $('joinBox').hidden = false;
+}
+
+// Makes a space on this hub and sets this browser up as its first device:
+// the hub hands out a token, the key is made here.
+async function joinHub(code, errEl, triedAsToken = false) {
+  errEl.textContent = '';
+  $('joinButton').disabled = true;
+  try {
+    let res;
+    try {
+      res = await fetch('/api/spaces', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ invite: code }) });
+    } catch {
+      throw new HubError("Can't reach the hub");
+    }
+    if (res.status === 403 && triedAsToken) throw new HubError("The hub didn't accept that as its token or as an invite code.");
+    if (!res.ok) throw new HubError((await res.text()).trim() || 'The hub answered ' + res.status);
+    const who = { hub: '', token: (await res.json()).token, key: C.newKey() };
+    await claimHub(who);
+    saveBrowserConfig(who.token, who.key);
+  } catch (err) {
+    errEl.textContent = err.message;
+    return;
+  } finally {
+    $('joinButton').disabled = false;
+  }
+  forgetInvite();
+  $('joinCode').value = '';
+  start().then(() => openSheet('Your space is ready. Now add your other devices'));
+}
+
+$('joinForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  joinHub($('joinCode').hidden ? '' : $('joinCode').value.trim(), $('joinErr'));
+});
 
 function locked() {
   if (desktop) {
@@ -136,6 +210,14 @@ function locked() {
 $('pairForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   $('pairErr').textContent = '';
+  const invite = C.parseInvite($('pairLink').value);
+  if (invite) {
+    // An invite for this hub makes a space here; one for another hub opens it.
+    if (invite.hub !== location.origin) { location.assign($('pairLink').value.trim()); return; }
+    $('pairLink').value = '';
+    joinHub(invite.code, $('pairErr'));
+    return;
+  }
   let p;
   try { p = C.parsePairing($('pairLink').value); } catch (err) { $('pairErr').textContent = err.message; return; }
   const who = { hub: '', token: p.token, key: p.key };
@@ -171,7 +253,9 @@ $('initForm').addEventListener('submit', async (e) => {
     }
     await claimHub(who);
   } catch (err) {
-    $('initErr').textContent = err instanceof Locked ? "That isn't the hub's token." : err.message;
+    // Not this hub's token: maybe an invite code.
+    if (err instanceof Locked) { joinHub(token, $('initErr'), true).then(() => { if (cfg) $('initToken').value = ''; }); return; }
+    $('initErr').textContent = err.message;
     return;
   }
   saveBrowserConfig(token, who.key);
@@ -214,10 +298,33 @@ function drawQR(canvas, text) {
 
 function pairing() { return C.pairingLink({ hub: hubAddress(), token: cfg.token, key: cfg.key }); }
 
+// The sheet shows either this feed's pairing link or an invite.
+const SHEET = { intro: $('sheetIntro').textContent, warn: $('sheetWarn').textContent, copy: $('copyLink').textContent };
+let sheetLink = '';
+
 function openSheet(title) {
+  sheetLink = pairing();
   $('sheetTitle').textContent = title || 'Add a device';
-  drawQR($('qr'), pairing());
+  $('sheetIntro').textContent = SHEET.intro;
+  $('sheetWarn').textContent = SHEET.warn;
+  $('copyLink').textContent = SHEET.copy;
+  $('sheetFpLine').hidden = $('startOver').hidden = false;
+  drawQR($('qr'), sheetLink);
   $('sheetFp').textContent = C.fingerprint(cfg.key);
+  $('sheet').hidden = false;
+  $('copyLink').focus();
+}
+
+function openInviteSheet(inv) {
+  sheetLink = C.inviteLink(hubAddress(), inv.code);
+  $('sheetTitle').textContent = 'Invite someone';
+  $('sheetIntro').textContent = "Send them this link, or let them scan it. They get a space of their own on your hub, encrypted with a key only their devices have: you can't read it.";
+  const until = new Date(inv.expires).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+  $('sheetWarn').textContent = 'The link works once, until ' + until + '. ' +
+    (inv.limit_mb > 0 ? 'Their space holds ' + inv.limit_mb + ' MB.' : 'Their space has no storage limit.');
+  $('copyLink').textContent = 'Copy invite link';
+  $('sheetFpLine').hidden = $('startOver').hidden = true;
+  drawQR($('qr'), sheetLink);
   $('sheet').hidden = false;
   $('copyLink').focus();
 }
@@ -227,7 +334,15 @@ $('addDevice').addEventListener('click', () => openSheet());
 $('closeSheet').addEventListener('click', closeSheet);
 $('sheet').addEventListener('click', (e) => { if (e.target === $('sheet')) closeSheet(); });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('sheet').hidden) closeSheet(); });
-$('copyLink').addEventListener('click', () => copyText(pairing(), 'Link copied. Paste it on your other device.').catch(fail));
+$('copyLink').addEventListener('click', () => {
+  const msg = $('startOver').hidden ? 'Invite link copied' : 'Link copied. Paste it on your other device.';
+  copyText(sheetLink, msg).catch(fail);
+});
+$('invite').addEventListener('click', async () => {
+  try {
+    openInviteSheet(await (await api('/api/invites', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json());
+  } catch (e) { fail(e); }
+});
 
 $('startOver').addEventListener('click', async () => {
   if (!confirm('Start over with a new key? This deletes everything on the hub, pinned items too, and every other device has to be paired again.')) return;
@@ -580,6 +695,7 @@ async function load() {
     const list = (await (await api('/api/items')).json()).items;
     items = list.map(openItem);
     render();
+    loadInfo().catch(() => {}); // storage used changes with the feed
   } catch (e) { fail(e); }
 }
 setInterval(() => { for (const li of nodes.values()) paint(li, li._item); }, 30000);
@@ -664,12 +780,26 @@ $('unpair').addEventListener('click', () => {
   showSetup();
 });
 
+$('leave').addEventListener('click', async () => {
+  if (!confirm("Delete your space from this hub? Everything in it goes, pinned items too, on all your devices. This can't be undone.")) return;
+  try { await api('/api/space', { method: 'DELETE' }); } catch (e) { fail(e); return; }
+  forgetBrowserConfig();
+  forgetItems();
+  showSetup('Your space was deleted.');
+});
+
+const mb = (n) => (n / 1048576).toFixed(n < 10 * 1048576 ? 1 : 0) + ' MB';
+
 async function loadInfo() {
   const info = await (await api('/api/info')).json();
   const h = info.ttl_hours;
-  $('policy').textContent = h > 0
+  let policy = h > 0
     ? 'Unpinned items delete themselves after ' + (h >= 48 ? Math.round(h / 24) + ' days' : Math.round(h) + ' hours')
     : 'Items stay until you delete them';
+  if (info.limit_mb > 0) policy += ' · ' + mb(info.used_bytes || 0) + ' of ' + info.limit_mb + ' MB used';
+  $('policy').textContent = policy;
+  $('hostLine').hidden = !(info.owner && info.mode && info.mode !== 'private');
+  $('leaveWrap').hidden = !!desktop || info.owner !== false;
 }
 
 async function start() {
@@ -682,6 +812,10 @@ async function start() {
   $('setup').hidden = true;
   $('app').hidden = false;
   $('notice').hidden = true;
+  if (invited) {
+    showNotice('This browser already has a space on this hub. To use the invite, open the link in a private window or on another device.');
+    forgetInvite();
+  }
   $('unpairWrap').hidden = !!desktop;
   $('footFp').textContent = C.fingerprint(cfg.key);
   paintDevice();

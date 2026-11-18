@@ -282,6 +282,32 @@ enum Seal {
         }
     }
 
+    /// An invite link: the hub's own address with the code after #, as in
+    /// https://fetch.example.com/#invite=abcd-efgh-jkmn. With it you make a
+    /// space of your own on someone else's hub.
+    struct Invite: Equatable {
+        var hub: String
+        var code: String
+
+        /// nil for anything that isn't an invite link.
+        init?(link: String) {
+            let s = link.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let hash = s.firstIndex(of: "#") else { return nil }
+            let address = String(s[..<hash]), fragment = String(s[s.index(after: hash)...])
+            let lower = address.lowercased()
+            guard lower.hasPrefix("http://") || lower.hasPrefix("https://"),
+                  let hub = Seal.normalizeURL(String(address.split(separator: "?", maxSplits: 1).first ?? ""))
+            else { return nil }
+            var parts = URLComponents()
+            parts.percentEncodedQuery = fragment
+            let code = parts.queryItems?.first { $0.name == "invite" }?.value?
+                .replacingOccurrences(of: "+", with: " ").trimmingCharacters(in: .whitespaces) ?? ""
+            guard !code.isEmpty else { return nil }
+            self.hub = hub
+            self.code = code
+        }
+    }
+
     static func queryEscape(_ s: String) -> String {
         var allowed = CharacterSet.alphanumerics
         allowed.insert(charactersIn: "-._~")

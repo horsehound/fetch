@@ -23,13 +23,22 @@ type hub struct {
 }
 
 func newHub(t *testing.T) *hub {
+	return newHubWith(t, options{mode: modeInvite, spaceMB: 500, maxSpaces: 50})
+}
+
+// newHubWith starts a hub with these options; the data directory, the host's
+// token and the upload limit are filled in.
+func newHubWith(t *testing.T, o options) *hub {
 	t.Helper()
 	dir := t.TempDir()
-	store, err := OpenStore(dir)
+	o.dir, o.token, o.maxUpload = dir, "secret-token-1234", 1<<20
+	if o.ttl == 0 {
+		o.ttl = time.Hour
+	}
+	s, err := newServer(o)
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := &server{store: store, token: "secret-token-1234", maxUpload: 1 << 20, ttl: time.Hour, subs: map[chan struct{}]struct{}{}}
 	srv := httptest.NewServer(s.routes())
 	t.Cleanup(srv.Close)
 	return &hub{t: t, srv: srv, s: s, dir: dir, key: testKey(5)}
@@ -275,7 +284,7 @@ func TestPinnedItemsSurviveClearAndExpiry(t *testing.T) {
 		t.Fatalf("pin: %s", resp.Status)
 	}
 	time.Sleep(5 * time.Millisecond)
-	if n, err := h.s.store.Expire(time.Millisecond); err != nil || n != 2 {
+	if n, err := h.s.owner.store.Expire(time.Millisecond); err != nil || n != 2 {
 		t.Fatalf("Expire removed %d (err %v), want 2", n, err)
 	}
 	items := h.list()

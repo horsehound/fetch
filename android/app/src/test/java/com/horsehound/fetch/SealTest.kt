@@ -36,6 +36,15 @@ class SealTest {
     }
 
     @Test
+    fun inviteLinks() {
+        for (inv in v["invites"].arr()) {
+            val o = inv.obj()
+            assertEquals(Seal.Invite(o["hub"].str(), o["code"].str()), Seal.Invite.parseOrNull(o["link"].str()))
+        }
+        for (s in v["not_invites"].arr()) assertNull(s.str(), Seal.Invite.parseOrNull(s.str()))
+    }
+
+    @Test
     fun linksThatArentWholeAreRefused() {
         assertNull(Seal.Pairing.parseOrNull("https://example.com"))
         assertNull(Seal.Pairing.parseOrNull("fetchpair://v1?hub=a&token=b"))

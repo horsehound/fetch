@@ -12,6 +12,9 @@ services:
     restart: unless-stopped
     ports:
       - "8787:8787"
+    environment:
+      # Who else may make a space: invite (codes from `fetch invite`), public or private.
+      FETCH_MODE: ${FETCH_MODE:-invite}
     volumes:
       - fetch-data:/data
 

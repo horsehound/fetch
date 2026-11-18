@@ -116,3 +116,9 @@ test('pairing links are checked', () => {
   assert.equal(C.parsePairing('fetchpair://v1?hub=192.168.1.20%3A8787&token=t&key=' + V.key).hub, 'http://192.168.1.20:8787');
   assert.equal(C.parsePairing('fetchpair://v1?hub=fetch.example.com&token=t&key=' + V.key).hub, 'https://fetch.example.com');
 });
+
+test('invite links', () => {
+  for (const inv of V.invites) assert.deepEqual(C.parseInvite(inv.link), { hub: inv.hub, code: inv.code }, inv.link);
+  for (const s of V.not_invites) assert.equal(C.parseInvite(s), null, s);
+  assert.equal(C.inviteLink('https://fetch.example.com/', 'abcd-efgh-jkmn'), V.invites[0].link);
+});

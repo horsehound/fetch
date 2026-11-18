@@ -226,6 +226,17 @@ func (s *Store) SetPinned(id string, on bool) (bool, error) {
 	return false, nil
 }
 
+// Usage is how much this feed takes up on the hub: the encrypted data and
+// envelopes of its items, and how many there are.
+func (s *Store) Usage() (bytes int64, items int) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, it := range s.items {
+		bytes += it.Size + int64(len(it.Meta))
+	}
+	return bytes, len(s.items)
+}
+
 // ---- the key fingerprint ----
 
 func (s *Store) Check() string {

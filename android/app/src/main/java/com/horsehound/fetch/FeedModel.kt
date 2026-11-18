@@ -144,28 +144,47 @@ class FeedModel(private val app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * The first device: makes the key for a hub nobody has set up yet. With
-     * [startOver], a hub that already has a key is wiped first. Returns what
-     * went wrong, or null.
+     * The first device of a feed: makes the key. [code] is the hub's token
+     * (your own hub) or an invite code (someone else's); a public hub needs
+     * neither. With [startOver], a feed that already has a key is wiped
+     * first. Returns what went wrong, or null.
      */
-    suspend fun setUp(server: String, token: String, startOver: Boolean): String? {
+    suspend fun setUp(server: String, code: String, startOver: Boolean): String? {
         val hub = Seal.normalizeUrl(server) ?: return "That address doesn't look right."
         val key = Seal.Key.new()
-        val client = HubClient.to(hub, token, key, config.device) ?: return "That address doesn't look right."
+        var token = code.trim()
         try {
-            if (startOver) {
-                client.resetHub()
-            } else if (client.hubCheck().isNotEmpty()) {
-                throw HubError.AlreadySetUp()
+            val first = HubClient.to(hub, token, key, config.device) ?: return "That address doesn't look right."
+            when {
+                token.isEmpty() -> token = first.join("")
+                startOver -> first.resetHub()
+                else -> try {
+                    if (first.hubCheck().isNotEmpty()) throw HubError.AlreadySetUp()
+                } catch (e: HubError.WrongToken) {
+                    // Not a token here: maybe an invite code.
+                    token = try {
+                        first.join(token)
+                    } catch (e: HubError.Server) {
+                        if (e.code == 403) throw HubError.Server(403, "The hub didn't accept that as its token or as an invite code.")
+                        throw e
+                    }
+                }
             }
-            client.claim()
+            HubClient.to(hub, token, key, config.device)!!.claim()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             return e.message ?: "Something went wrong."
         }
-        apply(config.copy(server = hub, token = token.trim(), key = key.text))
+        apply(config.copy(server = hub, token = token, key = key.text))
         return null
+    }
+
+    /** Makes a space of your own with an invite link; this phone is its first device. */
+    suspend fun join(invite: Seal.Invite): String? {
+        val problem = setUp(invite.hub, invite.code, startOver = false)
+        if (problem == null) flash("Your space is ready")
+        return problem
     }
 
     /** Deletes everything on the hub and makes a new key; every other device has to pair again. */

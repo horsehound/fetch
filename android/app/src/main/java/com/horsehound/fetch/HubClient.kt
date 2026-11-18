@@ -57,6 +57,29 @@ class HubClient(
     val key: Seal.Key,
     private val device: String,
 ) {
+    // ---- spaces ----
+
+    /**
+     * Makes a space of your own on this hub, with an invite code or (on a
+     * public hub) none, and returns its token. Needs no token itself.
+     */
+    suspend fun join(code: String): String {
+        val body = "{\"invite\":${Json.quote(code)}}".toRequestBody(JSON)
+        val request = Request.Builder().url(base.newBuilder().addPathSegments("api/spaces").build()).post(body).build()
+        val answer = try {
+            perform(request) { it.body!!.string() }
+        } catch (e: HubError.Server) {
+            if (e.code == 404 || e.code == 405) throw HubError.Server(e.code, "This hub doesn't hand out spaces. It may need an update.")
+            throw e
+        }
+        val o = try {
+            Json.parse(answer) as? Map<*, *>
+        } catch (e: Json.Invalid) {
+            null
+        }
+        return o?.get("token") as? String ?: throw HubError.NotAHub()
+    }
+
     // ---- the key ----
 
     /** The check of the key the hub was set up with, or "" if nobody has set it up. */

@@ -22,10 +22,10 @@ async function request(cfg, route, init = {}) {
     if (err.name === 'TimeoutError') throw new HubError(`The hub at ${cfg.url} didn't answer.`);
     throw new HubError(`Can't reach the hub at ${cfg.url}.`);
   }
-  if (res.status === 401) throw new HubError('The hub rejected the token.');
+  if (res.status === 401) throw Object.assign(new HubError('The hub rejected the token.'), { status: 401 });
   if (!res.ok) {
     const body = (await res.text().catch(() => '')).trim().slice(0, 200);
-    throw new HubError(body || `The hub answered ${res.status}.`);
+    throw Object.assign(new HubError(body || `The hub answered ${res.status}.`), { status: res.status });
   }
   return res;
 }
@@ -48,8 +48,11 @@ function claim(cfg, key) {
   });
 }
 
-// Joins the hub with a pairing link. Returns { url, token, key } to save.
+// Joins the hub with a pairing link, or makes a space of your own with an
+// invite link. Returns { url, token, key } to save.
 async function pair(link) {
+  const invite = seal.parseInvite(link);
+  if (invite) return join(invite.hub, invite.code);
   const p = seal.parsePairing(link);
   const cfg = { url: p.hub, token: p.token };
   const check = await hubCheck(cfg);
@@ -58,16 +61,62 @@ async function pair(link) {
   return { url: p.hub, token: p.token, key: seal.keyToText(p.key) };
 }
 
-// Sets up a hub nobody has set up yet, creating the key. With reset, a hub
-// that already has a key is wiped first.
-async function setUp(url, token, { reset = false } = {}) {
-  const cfg = { url: seal.normalizeURL(url), token: String(token || '').trim() };
+// Makes a space on a hub (with an invite code, or none on a public hub) and
+// sets this computer up as its first device: the hub hands out a token, the
+// key is made here.
+async function join(url, code) {
+  url = seal.normalizeURL(url);
+  if (!url) throw new HubError("That address doesn't look right.");
+  let res;
+  try {
+    res = await fetch(url + '/api/spaces', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ invite: code || '' }),
+      signal: AbortSignal.timeout(8000),
+    });
+  } catch {
+    throw new HubError(`Can't reach the hub at ${url}.`);
+  }
+  if (res.status === 404 || res.status === 405) throw new HubError(`The hub at ${url} doesn't hand out spaces. It may need an update.`);
+  if (!res.ok) {
+    const message = (await res.text().catch(() => '')).trim().slice(0, 200) || `The hub answered ${res.status}.`;
+    throw Object.assign(new HubError(message), { status: res.status });
+  }
+  const { token } = await res.json();
+  const key = seal.newKey();
+  await claim({ url, token }, key);
+  return { url, token, key: seal.keyToText(key) };
+}
+
+// Sets up the first device of a feed, creating the key. The code is the
+// hub's token (your own hub) or an invite code (someone else's); a public
+// hub needs neither. With reset, a feed that already has a key is wiped first.
+async function setUp(url, code, { reset = false } = {}) {
+  const cfg = { url: seal.normalizeURL(url), token: String(code || '').trim() };
   if (!cfg.url) throw new HubError("That address doesn't look right.");
-  if (reset) await request(cfg, '/api/vault', { method: 'DELETE' });
-  else if (await hubCheck(cfg) !== '') {
-    const err = new HubError('This hub already has a key. Pair this computer from a device that has it, or start over.');
-    err.canReset = true;
-    throw err;
+  if (!cfg.token) return join(cfg.url, '');
+  if (reset) {
+    await request(cfg, '/api/vault', { method: 'DELETE' });
+  } else {
+    let check;
+    try {
+      check = await hubCheck(cfg);
+    } catch (err) {
+      if (err.status !== 401) throw err;
+      // Not a token here: maybe an invite code.
+      try {
+        return await join(cfg.url, cfg.token);
+      } catch (joinErr) {
+        if (joinErr.status === 403) throw new HubError("The hub didn't accept that as its token or as an invite code.");
+        throw joinErr;
+      }
+    }
+    if (check !== '') {
+      const err = new HubError('This hub already has a key. Pair this computer from a device that has it, or start over.');
+      err.canReset = true;
+      throw err;
+    }
   }
   const key = seal.newKey();
   await claim(cfg, key);
@@ -146,4 +195,4 @@ async function send(cfg, { text, files }) {
   for (const file of files || []) await sendFile(cfg, file);
 }
 
-module.exports = { HubError, hubCheck, pair, setUp, verify, send, sendText, sendFile };
+module.exports = { HubError, hubCheck, pair, join, setUp, verify, send, sendText, sendFile };

@@ -14,9 +14,14 @@ final class SealTests: XCTestCase {
             let of: Int
             let op: String
         }
+        struct Invite: Decodable {
+            let link, hub, code: String
+        }
         let key, key_hex, check, link, hub, token: String
         let items: [Item]
         let corrupt: [Corruption]
+        let invites: [Invite]
+        let not_invites: [String]
     }
 
     var v: Vectors!
@@ -55,6 +60,16 @@ final class SealTests: XCTestCase {
         XCTAssertThrowsError(try Seal.Pairing(link: "fetchpair://v1?hub=a&token=b"))
         XCTAssertEqual(try Seal.Pairing(link: "fetchpair://v1?hub=192.168.1.20%3A8787&token=t&key=\(v.key)").hub, "http://192.168.1.20:8787")
         XCTAssertEqual(try Seal.Pairing(link: "fetchpair://v1?hub=fetch.example.com&token=t&key=\(v.key)").hub, "https://fetch.example.com")
+    }
+
+    func testInviteLinks() {
+        for inv in v.invites {
+            XCTAssertEqual(Seal.Invite(link: inv.link)?.hub, inv.hub, inv.link)
+            XCTAssertEqual(Seal.Invite(link: inv.link)?.code, inv.code, inv.link)
+        }
+        for s in v.not_invites {
+            XCTAssertNil(Seal.Invite(link: s), s)
+        }
     }
 
     func testEnvelopesAndData() throws {

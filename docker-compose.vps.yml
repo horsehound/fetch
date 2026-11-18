@@ -11,6 +11,12 @@ services:
   hub:
     image: ${FETCH_IMAGE:-ghcr.io/horsehound/fetch:latest}
     restart: unless-stopped
+    environment:
+      # Who else may make a space: invite (codes from `fetch invite`), public or private.
+      FETCH_MODE: ${FETCH_MODE:-invite}
+      FETCH_SPACE_MB: ${FETCH_SPACE_MB:-500}
+      # Visitors arrive through Caddy; their own address is in X-Forwarded-For.
+      FETCH_TRUST_PROXY: "1"
     volumes:
       - fetch-data:/data
 

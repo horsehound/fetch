@@ -281,8 +281,13 @@ function showFull({ addDevice = false } = {}) {
   full.on('closed', () => { full = null; });
 }
 
-function reloadFull() {
-  if (full && !full.isDestroyed()) full.webContents.reload();
+// Reloads the window's page; with addDevice, "Add a device" opens once the
+// page has loaded (sent earlier, it would be lost).
+function reloadFull({ addDevice = false } = {}) {
+  if (!full || full.isDestroyed()) return;
+  const wc = full.webContents;
+  if (addDevice) wc.once('did-finish-load', () => wc.send('page:add-device'));
+  wc.reload();
 }
 
 // ----------------------------------------------------------------- Settings
@@ -341,27 +346,35 @@ function hubFailure(err) {
   return { ok: false, message, canReset: Boolean(err.canReset) };
 }
 
-function pairedWith(creds) {
+// Saves a new pairing and shows the feed; addDevice (for a new feed's first
+// device) opens "Add a device" on it.
+function pairedWith(creds, { addDevice = false } = {}) {
   store.set(creds);
   rebuildTrayMenu();
-  if (full && !full.isDestroyed()) reloadFull();
-  else showFull();
+  if (full && !full.isDestroyed()) {
+    reloadFull({ addDevice });
+    full.show();
+  } else {
+    showFull({ addDevice });
+  }
   return { ok: true, view: settingsView() };
 }
 
-// Joins with a pairing link from another device.
+// Joins with a pairing link from another device, or makes a space of your
+// own with an invite link (then it's the first device, so "Add a device" opens).
 ipcMain.handle('settings:pair', async (event, link) => {
   if (!fromSettings(event)) return { ok: false };
-  try { return pairedWith(await hub.pair(link)); } catch (err) { return hubFailure(err); }
+  try {
+    return pairedWith(await hub.pair(link), { addDevice: Boolean(seal.parseInvite(link)) });
+  } catch (err) { return hubFailure(err); }
 });
 
-// First device: the hub's address and token; this computer creates the key.
+// First device: the hub's address and its token or an invite code (or
+// nothing, on a public hub); this computer creates the key.
 ipcMain.handle('settings:set-up', async (event, url, token, reset) => {
   if (!fromSettings(event)) return { ok: false };
   try {
-    const result = pairedWith(await hub.setUp(url, token, { reset: Boolean(reset) }));
-    showFull({ addDevice: true });
-    return result;
+    return pairedWith(await hub.setUp(url, token, { reset: Boolean(reset) }), { addDevice: true });
   } catch (err) { return hubFailure(err); }
 });
 

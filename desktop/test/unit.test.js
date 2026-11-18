@@ -141,7 +141,19 @@ test('setting up creates a key, and a second set-up is refused', { skip }, async
   cfg = { ...creds, device: 'Ünit rig' };
   await hub.verify(cfg);
   await assert.rejects(hub.setUp(URL_, TOKEN), (e) => e.canReset === true && /already has a key/.test(e.message));
-  await assert.rejects(hub.setUp(URL_, 'wrong-token-00000'), /rejected the token/);
+  await assert.rejects(hub.setUp(URL_, 'wrong-token-00000'), /as its token or as an invite code/);
+});
+
+test('an invite code in place of the token makes a space of its own', { skip }, async () => {
+  const res = await fetch(`${URL_}/api/invites`, { method: 'POST', headers: { Authorization: `Bearer ${TOKEN}` }, body: '{}' });
+  const { code } = await res.json();
+  const guest = await hub.setUp(URL_, code.toUpperCase());
+  assert.notEqual(guest.token, TOKEN);
+  assert.notEqual(guest.key, cfg.key);
+  await hub.verify(guest);
+  await assert.rejects(hub.setUp(URL_, code), /as its token or as an invite code/); // used up
+  const joined = await hub.pair(seal.pairingLink({ hub: URL_, token: guest.token, key: seal.keyFromText(guest.key) }));
+  assert.equal(joined.token, guest.token);
 });
 
 test('a pairing link joins; a stale one is refused', { skip }, async () => {
@@ -237,4 +249,9 @@ test('cleanEnv drops the AppImage mount', () => {
 
 test('ownArgs keeps only Fetch flags', () => {
   assert.deepEqual(version.ownArgs(['/opt/Fetch/fetch-desktop', '--enable-features=X', '--no-sandbox', '--throw']), ['--no-sandbox', '--throw']);
+});
+
+test('invite links', () => {
+  for (const inv of V.invites) assert.deepEqual(seal.parseInvite(inv.link), { hub: inv.hub, code: inv.code }, inv.link);
+  for (const s of V.not_invites) assert.equal(seal.parseInvite(s), null, s);
 });

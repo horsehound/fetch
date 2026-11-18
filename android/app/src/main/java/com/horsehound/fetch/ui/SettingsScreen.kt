@@ -141,6 +141,16 @@ private fun ColumnScope.Unpaired(model: FeedModel, onClose: () -> Unit) {
     var confirmStartOver by remember { mutableStateOf(false) }
 
     fun pair(text: String) {
+        val invite = Seal.Invite.parseOrNull(text)
+        if (invite != null) {
+            scope.launch {
+                busy = true
+                failure = model.join(invite)
+                busy = false
+                if (failure == null) onClose()
+            }
+            return
+        }
         val pairing = Seal.Pairing.parseOrNull(text)
         if (pairing == null) {
             failure = "That isn't a complete pairing link."
@@ -167,7 +177,8 @@ private fun ColumnScope.Unpaired(model: FeedModel, onClose: () -> Unit) {
     Heading("Pair with your hub")
     Note(
         "On a device that is already set up, open Settings and choose Add a device. " +
-            "Then scan its code here, or paste the link it gives you.",
+            "Then scan its code here, or paste the link it gives you. An invite link from someone " +
+            "who runs a hub works too.",
     )
     Button(onClick = { scan(context, ::pair) { failure = it } }, enabled = !busy) {
         Icon(Icons.Outlined.QrCodeScanner, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -177,7 +188,7 @@ private fun ColumnScope.Unpaired(model: FeedModel, onClose: () -> Unit) {
     OutlinedTextField(
         value = link,
         onValueChange = { link = it },
-        label = { Text("Pairing link") },
+        label = { Text("Pairing or invite link") },
         placeholder = { Text("fetchpair://v1?…") },
         singleLine = true,
         keyboardOptions = plainKeyboard(KeyboardType.Uri, ImeAction.Go),
@@ -188,10 +199,11 @@ private fun ColumnScope.Unpaired(model: FeedModel, onClose: () -> Unit) {
     Spacer(Modifier.height(6.dp))
     HorizontalDivider()
     Spacer(Modifier.height(6.dp))
-    Heading("Setting up the first device?")
+    Heading("New here, or your own hub?")
     Note(
-        "Enter the address and token the hub printed when it started. This phone makes the key " +
-            "every other device will share; the hub never sees it.",
+        "For your own hub, enter the token it printed when it started. With an invite code, or on " +
+            "a public hub (leave the code empty), you get a space of your own. Either way this phone " +
+            "makes the key every other device will share; the hub never sees it.",
     )
     OutlinedTextField(
         value = server,
@@ -205,7 +217,7 @@ private fun ColumnScope.Unpaired(model: FeedModel, onClose: () -> Unit) {
     OutlinedTextField(
         value = token,
         onValueChange = { token = it },
-        label = { Text("Token") },
+        label = { Text("Token or invite code") },
         singleLine = true,
         textStyle = MaterialTheme.typography.bodyLarge.copy(fontFamily = FontFamily.Monospace),
         keyboardOptions = plainKeyboard(KeyboardType.Ascii, ImeAction.Done),
@@ -213,7 +225,7 @@ private fun ColumnScope.Unpaired(model: FeedModel, onClose: () -> Unit) {
     )
     OutlinedButton(
         onClick = { setUp(startOver = false) },
-        enabled = !busy && server.isNotBlank() && token.isNotBlank(),
+        enabled = !busy && server.isNotBlank(),
     ) { Text("Set up") }
 
     if (busy) CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)

@@ -19,19 +19,19 @@
 </section>
 
 <section id="unpaired" hidden>
-  <label for="link">Pairing link</label>
+  <label for="link">Pairing or invite link</label>
   <div class="row">
     <input id="link" class="mono" type="text" spellcheck="false" autocomplete="off" placeholder="fetchpair://…">
     <button id="pair" type="button" class="primary">Pair</button>
   </div>
-  <p class="help">On a device that's set up, open <b>Add a device</b> and copy the pairing link. Paste it here.</p>
+  <p class="help">On a device that's set up, open <b>Add a device</b> and copy the pairing link. Paste it here. An invite link from someone who runs a hub works too.</p>
   <details id="first">
-    <summary>Setting up the first device?</summary>
+    <summary>New here, or running your own hub?</summary>
     <label for="url">Hub address</label>
     <input id="url" type="text" inputmode="url" spellcheck="false" autocomplete="off" placeholder="192.168.1.20:8787 or fetch.example.com">
-    <label for="token">Token</label>
-    <input id="token" class="mono" type="text" spellcheck="false" autocomplete="off" placeholder="printed by the hub when it starts">
-    <p class="help">This computer creates the encryption key. You add your other devices from here afterwards.</p>
+    <label for="token">Token or invite code</label>
+    <input id="token" class="mono" type="text" spellcheck="false" autocomplete="off" placeholder="leave empty on a public hub">
+    <p class="help">Your own hub's token is the one it printed when it started. With an invite code, or on a public hub, you get a space of your own. Either way this computer creates the encryption key, and you add your other devices from here afterwards.</p>
     <div class="row end">
       <button id="reset" type="button" class="danger" hidden>Start over (deletes everything on the hub)</button>
       <button id="setUp" type="button">Set up</button>
