@@ -1,21 +1,22 @@
 'use strict';
-// Talks to a Fetch hub. No Electron imports, so this file is unit-testable.
+// Talks to a Fetch hub. Everything is encrypted here before it leaves; the hub
+// only ever sees scrambled data. No Electron imports, so this file is
+// unit-testable.
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { Readable } = require('node:stream');
+const seal = require('./seal');
 
 class HubError extends Error {}
 
+// cfg: { url, token, key (text), device }
 async function request(cfg, route, init = {}) {
   let res;
   try {
     res = await fetch(cfg.url + route, {
       ...init,
-      headers: {
-        Authorization: `Bearer ${cfg.token}`,
-        'X-Device': encodeURIComponent(cfg.device || ''),
-        ...init.headers,
-      },
+      headers: { Authorization: `Bearer ${cfg.token}`, ...init.headers },
     });
   } catch (err) {
     if (err.name === 'TimeoutError') throw new HubError(`The hub at ${cfg.url} didn't answer.`);
@@ -29,45 +30,114 @@ async function request(cfg, route, init = {}) {
   return res;
 }
 
-// Confirms the address and token work. Used before saving settings.
-async function check(cfg) {
-  const res = await request(cfg, '/api/info', { signal: AbortSignal.timeout(8000) });
-  try {
-    return await res.json();
-  } catch {
-    throw new HubError(`${cfg.url} answered, but it isn't a Fetch hub.`);
+// The fingerprint of the key the hub's devices share, or '' if no device has
+// set one up yet.
+async function hubCheck(cfg) {
+  const res = await request(cfg, '/api/vault', { signal: AbortSignal.timeout(8000) });
+  let v;
+  try { v = await res.json(); } catch { v = null; }
+  if (!v || typeof v.check !== 'string') throw new HubError(`${cfg.url} answered, but it isn't a Fetch hub with encryption. Update the hub.`);
+  return v.check;
+}
+
+function claim(cfg, key) {
+  return request(cfg, '/api/vault', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ check: seal.check(key) }),
+  });
+}
+
+// Joins the hub with a pairing link. Returns { url, token, key } to save.
+async function pair(link) {
+  const p = seal.parsePairing(link);
+  const cfg = { url: p.hub, token: p.token };
+  const check = await hubCheck(cfg);
+  if (check === '') await claim(cfg, p.key); // the hub was reset since the link was made
+  else if (check !== seal.check(p.key)) throw new HubError("This link's key isn't the one the hub uses now. Make a fresh link on a device that works.");
+  return { url: p.hub, token: p.token, key: seal.keyToText(p.key) };
+}
+
+// Sets up a hub nobody has set up yet, creating the key. With reset, a hub
+// that already has a key is wiped first.
+async function setUp(url, token, { reset = false } = {}) {
+  const cfg = { url: seal.normalizeURL(url), token: String(token || '').trim() };
+  if (!cfg.url) throw new HubError("That address doesn't look right.");
+  if (reset) await request(cfg, '/api/vault', { method: 'DELETE' });
+  else if (await hubCheck(cfg) !== '') {
+    const err = new HubError('This hub already has a key. Pair this computer from a device that has it, or start over.');
+    err.canReset = true;
+    throw err;
+  }
+  const key = seal.newKey();
+  await claim(cfg, key);
+  return { url: cfg.url, token: cfg.token, key: seal.keyToText(key) };
+}
+
+// Confirms the saved key is still the hub's.
+async function verify(cfg) {
+  const check = await hubCheck(cfg);
+  if (check !== seal.check(seal.keyFromText(cfg.key))) {
+    throw new HubError(check === '' ? 'The hub was reset and has no key now.' : "This computer's key doesn't match the hub's anymore.");
   }
 }
 
-function sendText(cfg, text) {
+const INLINE_IMAGE = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif', 'image/bmp']);
+const TYPES = {
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', avif: 'image/avif', bmp: 'image/bmp',
+  heic: 'image/heic', svg: 'image/svg+xml', pdf: 'application/pdf', zip: 'application/zip', txt: 'text/plain', md: 'text/markdown',
+  json: 'application/json', mp4: 'video/mp4', mov: 'video/quicktime', mp3: 'audio/mpeg', html: 'text/html', csv: 'text/csv',
+};
+const EXT = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/gif': '.gif', 'image/webp': '.webp', 'image/avif': '.avif', 'image/bmp': '.bmp', 'text/plain': '.txt' };
+
+function stamp() {
+  const d = new Date(), p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+}
+
+// Encrypts one item and uploads it. data is null (text), a Buffer, or a path.
+async function upload(cfg, meta, data) {
+  const key = seal.keyFromText(cfg.key);
+  const { envelope, salt } = seal.sealMeta(key, { ...meta, device: cfg.device });
+  async function* body() {
+    yield seal.uploadHead(envelope);
+    if (Buffer.isBuffer(data)) yield* seal.sealBuffer(key, salt, data);
+    else if (typeof data === 'string') yield* seal.sealFile(key, salt, data);
+  }
   return request(cfg, '/api/items', {
     method: 'POST',
-    headers: { 'Content-Type': 'text/plain; charset=utf-8' },
-    body: text,
+    headers: { 'Content-Type': seal.SEALED_TYPE },
+    body: Readable.from(body()),
+    duplex: 'half',
   });
+}
+
+function sendText(cfg, text) {
+  if (Buffer.byteLength(text) > seal.MAX_TEXT_IN_META) {
+    const buf = Buffer.from(text);
+    return upload(cfg, { kind: 'file', name: `text-${stamp()}.txt`, mime: 'text/plain', size: buf.length }, buf);
+  }
+  return upload(cfg, { kind: 'text', text }, null);
 }
 
 // A file is either a path on disk (copied from the file manager) or bytes
 // (a picture pasted from the clipboard).
 async function sendFile(cfg, file) {
-  let body, name = file.name || '';
   if (file.path) {
     const stat = await fs.promises.stat(file.path).catch(() => null);
     if (!stat) throw new HubError(`${path.basename(file.path)} isn't there any more.`);
     if (stat.isDirectory()) throw new HubError(`${path.basename(file.path)} is a folder; only files can be thrown.`);
-    body = await fs.openAsBlob(file.path); // streamed from disk, not read into memory
-    name = path.basename(file.path);
-  } else {
-    body = new Blob([file.bytes]);
-    // Every clipboard picture arrives as "image.png"; let the hub give it a dated name.
-    if (name === 'image.png') name = '';
+    const name = path.basename(file.path);
+    const mime = TYPES[path.extname(name).slice(1).toLowerCase()] || 'application/octet-stream';
+    const kind = INLINE_IMAGE.has(mime) ? 'image' : 'file';
+    return upload(cfg, { kind, name, mime, size: stat.size }, file.path);
   }
-  const query = name ? `?name=${encodeURIComponent(name)}` : '';
-  return request(cfg, '/api/items' + query, {
-    method: 'POST',
-    headers: { 'Content-Type': file.type || 'application/octet-stream' },
-    body,
-  });
+  const bytes = Buffer.from(file.bytes);
+  const mime = file.type || 'application/octet-stream';
+  const kind = INLINE_IMAGE.has(mime) ? 'image' : 'file';
+  // Every clipboard picture arrives as "image.png"; give it a dated name.
+  const name = file.name && file.name !== 'image.png' ? file.name : `${kind}-${stamp()}${EXT[mime] || ''}`;
+  return upload(cfg, { kind, name, mime, size: bytes.length }, bytes);
 }
 
 // Sends one "throw": optional text plus any number of files, in order.
@@ -76,4 +146,4 @@ async function send(cfg, { text, files }) {
   for (const file of files || []) await sendFile(cfg, file);
 }
 
-module.exports = { HubError, check, send, sendText, sendFile };
+module.exports = { HubError, hubCheck, pair, setUp, verify, send, sendText, sendFile };

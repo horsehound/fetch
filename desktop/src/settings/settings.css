@@ -29,3 +29,11 @@ button { font: inherit; color: var(--fg); cursor: pointer; padding: 7px 14px; bo
 button:hover { border-color: var(--lime); }
 button.primary { background: var(--lime); color: var(--bg); border-color: var(--lime); font-weight: 600; }
 button:disabled { opacity: 0.5; cursor: default; }
+.status { margin: 6px 0 12px; line-height: 1.6; }
+.status b { font-weight: 600; overflow-wrap: anywhere; }
+.fp { font-family: var(--mono); color: var(--lime); }
+.row.end { justify-content: flex-end; margin-top: 12px; }
+details { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 12px; }
+summary { cursor: pointer; }
+button.danger:hover { border-color: var(--fuchsia); color: var(--fuchsia); }
+#hubError:empty { display: none; }

@@ -7,7 +7,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class HubConfigTest {
-    private fun url(server: String) = HubConfig(server = server, token = "t").baseUrl?.toString()
+    private val key = Seal.Key.new().text
+
+    private fun url(server: String) = HubConfig(server = server, token = "t", key = key).baseUrl?.toString()
 
     @Test
     fun addressesOnAHomeNetworkGetHttp() {
@@ -22,7 +24,8 @@ class HubConfigTest {
     @Test
     fun domainsGetHttps() {
         assertEquals("https://fetch.example.com/", url("fetch.example.com"))
-        assertEquals("https://example.com/fetch", url("example.com/fetch/"))
+        // Every client talks to the hub's origin.
+        assertEquals("https://example.com/", url("example.com/fetch/"))
     }
 
     @Test
@@ -40,9 +43,20 @@ class HubConfigTest {
     }
 
     @Test
-    fun completeNeedsBothAddressAndToken() {
-        assertTrue(HubConfig("192.168.1.20:8787", "token").isComplete)
-        assertFalse(HubConfig("192.168.1.20:8787", "  ").isComplete)
-        assertFalse(HubConfig("", "token").isComplete)
+    fun completeNeedsAddressTokenAndKey() {
+        assertTrue(HubConfig("192.168.1.20:8787", "token", key).isComplete)
+        assertFalse(HubConfig("192.168.1.20:8787", "  ", key).isComplete)
+        assertFalse(HubConfig("", "token", key).isComplete)
+        assertFalse(HubConfig("192.168.1.20:8787", "token", "").isComplete)
+        assertFalse(HubConfig("192.168.1.20:8787", "token", "not-a-key").isComplete)
+    }
+
+    @Test
+    fun aPairedConfigMakesItsOwnLink() {
+        val config = HubConfig(" 192.168.1.20:8787/ ", " abc ", key)
+        val pairing = Seal.Pairing.parse(config.pairing!!.link)
+        assertEquals("http://192.168.1.20:8787", pairing.hub)
+        assertEquals("abc", pairing.token)
+        assertEquals(key, pairing.key.text)
     }
 }

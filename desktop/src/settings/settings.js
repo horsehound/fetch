@@ -2,13 +2,59 @@
 (async () => {
   const api = window.fetchSettings;
   const $ = (id) => document.getElementById(id);
-  const current = await api.get();
+  let current = await api.get();
   const mac = current.platform === 'darwin';
 
-  $('url').value = current.url;
-  $('token').value = current.token;
   $('device').value = current.device;
   $('openAtLogin').checked = current.openAtLogin;
+
+  // ---- the hub: paired, or pairing ----
+  function showHub(view) {
+    current = view;
+    $('paired').hidden = !view.paired;
+    $('unpaired').hidden = view.paired;
+    $('hubName').textContent = view.url;
+    $('fp').textContent = view.fingerprint;
+    $('hubError').textContent = '';
+    $('reset').hidden = true;
+    if (!view.paired) $('link').focus();
+  }
+  showHub(current);
+
+  async function busy(button, label, work) {
+    const was = button.textContent;
+    button.disabled = true;
+    button.textContent = label;
+    $('hubError').textContent = '';
+    try { return await work(); } finally { button.disabled = false; button.textContent = was; }
+  }
+
+  function outcome(result) {
+    if (result.ok) { showHub(result.view); return; }
+    $('hubError').textContent = result.message;
+    $('reset').hidden = !result.canReset;
+  }
+
+  $('pair').addEventListener('click', () => busy($('pair'), 'Pairing…', async () => {
+    if (!$('link').value.trim()) { $('hubError').textContent = 'Paste the pairing link first.'; return; }
+    outcome(await api.pair($('link').value));
+    if (current.paired) $('link').value = '';
+  }));
+  $('link').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); $('pair').click(); } });
+
+  $('setUp').addEventListener('click', () => busy($('setUp'), 'Setting up…', async () => {
+    outcome(await api.setUp($('url').value, $('token').value, false));
+  }));
+  $('reset').addEventListener('click', () => {
+    if (!confirm('Delete everything on the hub, pinned items too, and start over with a new key? Every other device has to be paired again.')) return;
+    busy($('reset'), 'Starting over…', async () => outcome(await api.setUp($('url').value, $('token').value, true)));
+  });
+
+  $('addDevice').addEventListener('click', () => api.addDevice());
+  $('unpair').addEventListener('click', async () => {
+    if (!confirm("Unpair this computer? It forgets the key. The feed stays on your other devices; you'd need a pairing link to come back.")) return;
+    showHub(await api.unpair());
+  });
 
   // ---- shortcut field ----
   let hotkey = current.hotkey;
@@ -68,27 +114,16 @@
   });
   $('clearHotkey').addEventListener('click', () => { hotkey = ''; showHotkey(); });
 
-  // ---- saving ----
-  async function save(force) {
-    for (const id of ['url', 'token', 'hotkey']) $(id).classList.remove('bad');
+  // ---- saving this computer's settings ----
+  $('form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    $('hotkey').classList.remove('bad');
     $('error').textContent = '';
-    $('force').hidden = true;
     $('save').disabled = true;
-    $('save').textContent = 'Checking…';
-    const result = await api.save({
-      url: $('url').value,
-      token: $('token').value,
-      device: $('device').value,
-      hotkey,
-      openAtLogin: $('openAtLogin').checked,
-    }, force);
+    const result = await api.save({ device: $('device').value, hotkey, openAtLogin: $('openAtLogin').checked });
     $('save').disabled = false;
-    $('save').textContent = 'Save';
     if (result.ok) return; // the app closes this window
     $('error').textContent = result.message;
     if (result.field) $(result.field).classList.add('bad');
-    $('force').hidden = !result.canForce;
-  }
-  $('form').addEventListener('submit', (e) => { e.preventDefault(); save(false); });
-  $('force').addEventListener('click', () => save(true));
+  });
 })();

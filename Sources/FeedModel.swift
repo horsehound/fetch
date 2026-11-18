@@ -16,10 +16,14 @@ final class FeedModel: ObservableObject {
     @Published private(set) var problem: String?
     @Published var toast: String?
     @Published var sharing: SharedFile?
+    /// A pairing link opened from outside (the Camera app, a tapped link),
+    /// waiting for the person to confirm it.
+    @Published var pendingPairing: Seal.Pairing?
 
     private var liveTask: Task<Void, Never>?
     private var toastTask: Task<Void, Never>?
     private let thumbnails = NSCache<NSString, UIImage>()
+    private var codeCache: [String: CodeHighlighter.Result?] = [:]
 
     var client: HubClient? { HubClient(config) }
 
@@ -32,8 +36,115 @@ final class FeedModel: ObservableObject {
         new.save()
         config = new
         items = []
+        codeCache = [:]
+        thumbnails.removeAllObjects()
         problem = nil
         start()
+    }
+
+    // MARK: pairing
+
+    /// A fetchpair:// link arrived from outside; ask before using it, because
+    /// it decides where everything you send goes.
+    func received(_ url: URL) {
+        guard let pairing = try? Seal.Pairing(link: url.absoluteString) else {
+            flash("That pairing link is incomplete")
+            return
+        }
+        if pairing == config.pairing {
+            flash("Already paired with this hub")
+            return
+        }
+        pendingPairing = pairing
+    }
+
+    /// Joins with a pairing link. Returns an error to show, or nil.
+    func pair(_ pairing: Seal.Pairing) async -> String? {
+        guard let base = URL(string: pairing.hub) else { return Seal.Failure.incompleteLink.localizedDescription }
+        let client = HubClient(base: base, token: pairing.token, key: pairing.key, device: config.device)
+        do {
+            let check = try await client.hubCheck()
+            if check.isEmpty {
+                try await client.claim() // the hub was reset since the link was made
+            } else if check != pairing.key.check {
+                return "This link's key isn't the one the hub uses now. Make a fresh link on a device that works."
+            }
+        } catch HubError.wrongToken {
+            return "The hub doesn't accept this link's token."
+        } catch {
+            return error.localizedDescription
+        }
+        var next = config
+        next.server = pairing.hub
+        next.token = pairing.token
+        next.key = pairing.key.text
+        apply(next)
+        flash("Paired")
+        return nil
+    }
+
+    /// The first device: creates the key for a hub nobody has set up. With
+    /// startOver, a hub that already has a key is wiped first.
+    func setUp(server: String, token: String, startOver: Bool) async throws {
+        guard let hub = Seal.normalizeURL(server), let base = URL(string: hub) else {
+            throw HubError.server(0, "That address doesn't look right.")
+        }
+        let key = Seal.Key.new()
+        let client = HubClient(base: base, token: token.trimmingCharacters(in: .whitespacesAndNewlines), key: key, device: config.device)
+        if startOver {
+            try await client.resetHub()
+        } else {
+            let existing = try await client.hubCheck()
+            if !existing.isEmpty { throw HubError.alreadySetUp }
+        }
+        try await client.claim()
+        var next = config
+        next.server = hub
+        next.token = client.token
+        next.key = key.text
+        apply(next)
+    }
+
+    /// Deletes everything on the hub and makes a new key; every other device
+    /// has to pair again.
+    func startOver() async throws {
+        guard let client else { throw HubError.notSetUp }
+        let fresh = HubClient(base: client.base, token: client.token, key: .new(), device: client.device)
+        try await fresh.resetHub()
+        try await fresh.claim()
+        var next = config
+        next.key = fresh.key.text
+        apply(next)
+    }
+
+    func unpair() {
+        var next = config
+        next.server = ""
+        next.token = ""
+        next.key = ""
+        stop()
+        apply(next)
+    }
+
+    func rename(_ device: String) {
+        let name = device.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, name != config.device else { return }
+        var next = config
+        next.device = String(name.prefix(40))
+        next.save()
+        config = next
+    }
+
+    // MARK: code
+
+    /// Language and coloured tokens for text that is code, worked out here:
+    /// the hub never sees the text.
+    func code(for item: Item) -> CodeHighlighter.Result? {
+        guard item.isText, let text = item.text else { return nil }
+        if let cached = codeCache[item.id] { return cached }
+        let result = CodeHighlighter.shared.analyze(text)
+        codeCache[item.id] = result
+        return result
     }
 
     /// Loads the feed and keeps it current until `stop()`.
@@ -42,6 +153,13 @@ final class FeedModel: ObservableObject {
         guard let client else { return }
         liveTask = Task { [weak self] in
             while !Task.isCancelled {
+                // A device elsewhere may have started over with a new key.
+                do {
+                    try await client.verify()
+                } catch HubError.otherKey {
+                    self?.problem = HubError.otherKey.localizedDescription
+                    return
+                } catch {}
                 await self?.refresh()
                 do {
                     let stream = try await client.events()
@@ -91,12 +209,16 @@ final class FeedModel: ObservableObject {
 
     func send(text: String) async {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        await attempt { try await $0.sendText(text) }
+        await attempt { client in
+            try await client.verify() // never send with a key the other devices don't have
+            try await client.sendText(text)
+        }
         await refresh()
     }
 
     func send(image data: Data) async {
         await attempt { client in
+            try await client.verify()
             // HEIC to JPEG conversion is slow enough to keep off the main thread.
             let prepared = await Task.detached(priority: .userInitiated) { ImagePrep.prepare(data) }.value
             if let prepared {

@@ -4,46 +4,45 @@ import android.content.Context
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
-/** Where the hub is and how this device introduces itself to it. */
+/** Which hub this phone is paired with, its key, and the name it sends under. */
 data class HubConfig(
     val server: String = "",
     val token: String = "",
+    val key: String = "",
     val device: String = DEFAULT_DEVICE,
 ) {
-    val isComplete: Boolean get() = baseUrl != null && token.isNotBlank()
+    val isComplete: Boolean get() = baseUrl != null && token.isNotBlank() && sealKey != null
 
-    /**
-     * Accepts full http(s) URLs, and fills in the scheme when it is left out:
-     * http for an address on a home network ("192.168.1.20:8787",
-     * "proxmox.lan"), https for a domain ("fetch.example.com").
-     */
-    val baseUrl: HttpUrl?
+    /** The hub's origin; see [Seal.normalizeUrl] for how a typed address is read. */
+    val baseUrl: HttpUrl? get() = Seal.normalizeUrl(server)?.let { "$it/".toHttpUrlOrNull() }
+
+    val sealKey: Seal.Key? get() = Seal.Key.parseOrNull(key)
+
+    /** The link that pairs another device with the same hub and key. */
+    val pairing: Seal.Pairing?
         get() {
-            var text = server.trim()
-            if (text.isEmpty()) return null
-            if (!text.contains("://")) {
-                val host = text.substringBefore('/')
-                val isLocal = host.contains(':') || !host.contains('.') ||
-                    host.endsWith(".local") || host.endsWith(".lan") ||
-                    host.all { it.isDigit() || it == '.' }
-                text = (if (isLocal) "http://" else "https://") + text
-            }
-            return text.trimEnd('/').toHttpUrlOrNull()
+            val hub = Seal.normalizeUrl(server) ?: return null
+            val key = sealKey ?: return null
+            if (token.isBlank()) return null
+            return Seal.Pairing(hub, token.trim(), key)
         }
 
     fun save(context: Context) {
         prefs(context).edit()
             .putString("server", server.trim())
             .putString("token", token.trim())
+            .putString("key", key.trim())
             .putString("device", device.trim())
             .apply()
     }
 
     companion object {
         const val DEFAULT_DEVICE = "Android"
+        const val MAX_DEVICE_NAME = 40
 
         // The app and its share sheet target are one process, so plain
-        // preferences are enough for both to see the same settings.
+        // preferences are enough for both to see the same settings. They
+        // hold the key, which is why backups are off (see the manifest).
         private fun prefs(context: Context) =
             context.applicationContext.getSharedPreferences("hub", Context.MODE_PRIVATE)
 
@@ -52,6 +51,7 @@ data class HubConfig(
             return HubConfig(
                 server = p.getString("server", null).orEmpty(),
                 token = p.getString("token", null).orEmpty(),
+                key = p.getString("key", null).orEmpty(),
                 device = p.getString("device", null).orEmpty().ifBlank { DEFAULT_DEVICE },
             )
         }

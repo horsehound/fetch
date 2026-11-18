@@ -80,6 +80,8 @@ final class ShareViewController: UIViewController {
     }
 
     private func sendAll(with client: HubClient) async throws -> Int {
+        // Never encrypt with a key the other devices no longer use.
+        try await client.verify()
         let shared = (extensionContext?.inputItems as? [NSExtensionItem]) ?? []
         let providers = shared.flatMap { $0.attachments ?? [] }
         var sent = 0
@@ -156,22 +158,17 @@ final class ShareViewController: UIViewController {
         extensionContext?.cancelRequest(withError: CocoaError(.userCancelled))
     }
 
-    /// Normally the hub details come from the Fetch app. If this install can't
+    /// Normally the pairing comes from the Fetch app. If this install can't
     /// share settings between the app and the share sheet, ask once here.
     private func askForHub() {
         let alert = UIAlertController(
-            title: "Connect to your hub",
-            message: "Enter the address and token your Fetch hub printed when it started.",
+            title: "Pair the share sheet",
+            message: "Paste the pairing link from Add a device on a device that's set up.",
             preferredStyle: .alert
         )
         alert.addTextField { field in
-            field.placeholder = "192.168.1.20:8787"
+            field.placeholder = "fetchpair://…"
             field.keyboardType = .URL
-            field.autocapitalizationType = .none
-            field.autocorrectionType = .no
-        }
-        alert.addTextField { field in
-            field.placeholder = "Token"
             field.autocapitalizationType = .none
             field.autocorrectionType = .no
         }
@@ -179,13 +176,14 @@ final class ShareViewController: UIViewController {
             self?.close()
         })
         alert.addAction(UIAlertAction(title: "Send", style: .default) { [weak self, weak alert] _ in
-            var config = HubConfig.load()
-            config.server = alert?.textFields?.first?.text ?? ""
-            config.token = alert?.textFields?.last?.text ?? ""
-            guard config.isComplete else {
-                self?.fail("That address or token doesn't look right.")
+            guard let pairing = try? Seal.Pairing(link: alert?.textFields?.first?.text ?? "") else {
+                self?.fail("That isn't a complete pairing link.")
                 return
             }
+            var config = HubConfig.load()
+            config.server = pairing.hub
+            config.token = pairing.token
+            config.key = pairing.key.text
             config.save()
             self?.begin()
         })

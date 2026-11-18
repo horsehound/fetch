@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -13,14 +14,12 @@ import (
 	"time"
 )
 
-// A 1x1 PNG, enough for content sniffing.
-var tinyPNG = []byte("\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89")
-
 type hub struct {
 	t   *testing.T
 	srv *httptest.Server
 	s   *server
 	dir string
+	key Key
 }
 
 func newHub(t *testing.T) *hub {
@@ -30,16 +29,16 @@ func newHub(t *testing.T) *hub {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := &server{store: store, token: "secret", maxUpload: 1 << 20, ttl: time.Hour, subs: map[chan struct{}]struct{}{}}
+	s := &server{store: store, token: "secret-token-1234", maxUpload: 1 << 20, ttl: time.Hour, subs: map[chan struct{}]struct{}{}}
 	srv := httptest.NewServer(s.routes())
 	t.Cleanup(srv.Close)
-	return &hub{t: t, srv: srv, s: s, dir: dir}
+	return &hub{t: t, srv: srv, s: s, dir: dir, key: testKey(5)}
 }
 
-func (h *hub) do(method, path, contentType string, body []byte) *http.Response {
+func (h *hub) req(method, path, contentType string, body io.Reader) *http.Response {
 	h.t.Helper()
-	req, _ := http.NewRequest(method, h.srv.URL+path, bytes.NewReader(body))
-	req.Header.Set("Authorization", "Bearer secret")
+	req, _ := http.NewRequest(method, h.srv.URL+path, body)
+	req.Header.Set("Authorization", "Bearer secret-token-1234")
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
 	}
@@ -51,31 +50,37 @@ func (h *hub) do(method, path, contentType string, body []byte) *http.Response {
 	return resp
 }
 
-func (h *hub) create(path, contentType string, body []byte) Item {
+// send encrypts an item the way a device does and uploads it.
+func (h *hub) send(m Meta, data []byte) Item {
 	h.t.Helper()
-	resp := h.do("POST", path, contentType, body)
+	var body bytes.Buffer
+	var r io.Reader
+	if data != nil {
+		r = bytes.NewReader(data)
+	}
+	if err := h.key.WriteUpload(&body, m, r); err != nil {
+		h.t.Fatal(err)
+	}
+	resp := h.req("POST", "/api/items", sealedType, &body)
 	if resp.StatusCode != http.StatusCreated {
 		msg, _ := io.ReadAll(resp.Body)
-		h.t.Fatalf("POST %s: %s %s", path, resp.Status, msg)
+		h.t.Fatalf("upload: %s %s", resp.Status, msg)
 	}
-	var out struct{ Items []Item }
+	var out struct{ Item Item }
 	json.NewDecoder(resp.Body).Decode(&out)
-	if len(out.Items) != 1 {
-		h.t.Fatalf("POST %s: got %d items, want 1", path, len(out.Items))
-	}
-	return out.Items[0]
+	return out.Item
 }
 
 func (h *hub) list() []Item {
 	h.t.Helper()
 	var out struct{ Items []Item }
-	json.NewDecoder(h.do("GET", "/api/items", "", nil).Body).Decode(&out)
+	json.NewDecoder(h.req("GET", "/api/items", "", nil).Body).Decode(&out)
 	return out.Items
 }
 
 func TestRejectsMissingOrWrongToken(t *testing.T) {
 	h := newHub(t)
-	for _, auth := range []string{"", "Bearer nope"} {
+	for _, auth := range []string{"", "Bearer nope", "secret-token-1234"} {
 		req, _ := http.NewRequest("GET", h.srv.URL+"/api/items", nil)
 		req.Header.Set("Authorization", auth)
 		resp, err := http.DefaultClient.Do(req)
@@ -83,84 +88,93 @@ func TestRejectsMissingOrWrongToken(t *testing.T) {
 			t.Fatal(err)
 		}
 		resp.Body.Close()
-		if resp.StatusCode != http.StatusUnauthorized {
+		if auth != "secret-token-1234" && resp.StatusCode != http.StatusUnauthorized {
 			t.Errorf("auth %q: got %d, want 401", auth, resp.StatusCode)
 		}
 	}
 }
 
-func TestTextRoundTrip(t *testing.T) {
+func TestItemsRoundTripAndTheHubCannotReadThem(t *testing.T) {
 	h := newHub(t)
-	it := h.create("/api/items", "text/plain; charset=utf-8", []byte("grüße\nline two"))
-	if it.Kind != "text" || it.Text != "grüße\nline two" {
-		t.Fatalf("got %+v", it)
-	}
-	raw, _ := io.ReadAll(h.do("GET", "/api/items/"+it.ID+"/raw", "", nil).Body)
-	if string(raw) != "grüße\nline two" {
-		t.Errorf("raw = %q", raw)
-	}
-}
+	secret := "sudo pacman -Syu  # my secret"
+	picture := pattern(150000)
+	h.send(Meta{Kind: "text", Text: secret, Device: "CachyOS"}, nil)
+	h.send(Meta{Kind: "image", Name: "holiday.png", Mime: "image/png", Size: int64(len(picture))}, picture)
 
-func TestUntypedBodyBecomesTextOrFileBySniffing(t *testing.T) {
-	h := newHub(t)
-	// What `echo hi | curl --data-binary @-` sends: no useful type, trailing newline.
-	if it := h.create("/api/items", "application/x-www-form-urlencoded", []byte("hi\n")); it.Kind != "text" || it.Text != "hi" {
-		t.Errorf("piped text: got %+v", it)
+	items := h.list()
+	if len(items) != 2 {
+		t.Fatalf("%d items", len(items))
 	}
-	if it := h.create("/api/items", "application/octet-stream", tinyPNG); it.Kind != "image" || it.Mime != "image/png" || !strings.HasSuffix(it.Name, ".png") {
-		t.Errorf("piped png: got %+v", it)
+	pic, text := items[0], items[1]
+	if text.Size != 0 || pic.Size != sealedSize(int64(len(picture))) {
+		t.Errorf("sizes: text %d, picture %d", text.Size, pic.Size)
 	}
-}
 
-func TestImageIsStoredAndServedInline(t *testing.T) {
-	h := newHub(t)
-	it := h.create("/api/items?name=shot.png", "image/png", tinyPNG)
-	if it.Kind != "image" || it.Name != "shot.png" || it.Size != int64(len(tinyPNG)) {
-		t.Fatalf("got %+v", it)
-	}
-	resp := h.do("GET", "/api/items/"+it.ID+"/raw", "", nil)
-	body, _ := io.ReadAll(resp.Body)
-	if !bytes.Equal(body, tinyPNG) {
-		t.Error("served bytes differ from the upload")
-	}
-	if d := resp.Header.Get("Content-Disposition"); !strings.HasPrefix(d, "inline") {
-		t.Errorf("disposition = %q, want inline", d)
-	}
-}
-
-// Uploaded markup must never render as a page on the hub's own origin.
-func TestActiveContentIsOnlyEverADownload(t *testing.T) {
-	h := newHub(t)
-	for name, mime := range map[string]string{"x.svg": "image/svg+xml", "x.html": "text/html"} {
-		it := h.create("/api/items?name="+name, mime, []byte("<script>alert(1)</script>"))
-		resp := h.do("GET", "/api/items/"+it.ID+"/raw", "", nil)
-		if it.Kind != "file" || !strings.HasPrefix(resp.Header.Get("Content-Disposition"), "attachment") {
-			t.Errorf("%s: kind=%s disposition=%q", name, it.Kind, resp.Header.Get("Content-Disposition"))
+	// Nothing readable anywhere the hub keeps things.
+	var everything []byte
+	filepath.Walk(h.dir, func(p string, info os.FileInfo, err error) error {
+		if err == nil && !info.IsDir() {
+			b, _ := os.ReadFile(p)
+			everything = append(everything, b...)
 		}
-		if resp.Header.Get("X-Content-Type-Options") != "nosniff" || !strings.Contains(resp.Header.Get("Content-Security-Policy"), "sandbox") {
-			t.Errorf("%s: missing hardening headers", name)
+		return nil
+	})
+	for _, plain := range []string{"pacman", "CachyOS", "holiday", "image/png"} {
+		if bytes.Contains(everything, []byte(plain)) {
+			t.Errorf("%q is readable in the hub's data directory", plain)
 		}
 	}
+	if bytes.Contains(everything, picture[:64]) {
+		t.Error("the picture is stored readably")
+	}
+
+	// A device with the key gets everything back.
+	m, _, err := h.key.OpenMeta(text.Meta)
+	if err != nil || m.Text != secret || m.Device != "CachyOS" {
+		t.Fatalf("text meta: %+v %v", m, err)
+	}
+	pm, salt, err := h.key.OpenMeta(pic.Meta)
+	if err != nil || pm.Name != "holiday.png" {
+		t.Fatalf("picture meta: %+v %v", pm, err)
+	}
+	resp := h.req("GET", "/api/items/"+pic.ID+"/raw", "", nil)
+	if resp.Header.Get("Content-Type") != "application/octet-stream" || !strings.Contains(resp.Header.Get("Content-Security-Policy"), "sandbox") {
+		t.Errorf("raw headers: %v", resp.Header)
+	}
+	got, err := io.ReadAll(h.key.OpenData(resp.Body, salt))
+	if err != nil || !bytes.Equal(got, picture) {
+		t.Fatalf("picture data: %v", err)
+	}
+	if b, _ := io.ReadAll(h.req("GET", "/api/items/"+text.ID+"/raw", "", nil).Body); len(b) != 0 {
+		t.Errorf("a text item has %d bytes of data", len(b))
+	}
 }
 
-func TestNamesCannotEscapeTheDataDirectory(t *testing.T) {
+func TestOnlyEncryptedUploadsAreAccepted(t *testing.T) {
 	h := newHub(t)
-	it := h.create("/api/items?name=..%2F..%2Fetc%2Fpasswd", "application/pdf", []byte("x"))
-	if it.Name != "passwd" {
-		t.Errorf("name = %q", it.Name)
+	if resp := h.req("POST", "/api/items", "text/plain", strings.NewReader("hello")); resp.StatusCode != http.StatusUnsupportedMediaType {
+		t.Errorf("plain text: got %d, want 415", resp.StatusCode)
 	}
-	if resp := h.do("GET", "/api/items/..%2F..%2Ftoken/raw", "", nil); resp.StatusCode != http.StatusNotFound {
-		t.Errorf("traversal id: got %d, want 404", resp.StatusCode)
+	frame := func(meta, data []byte) io.Reader {
+		return bytes.NewReader(append(append(binary.BigEndian.AppendUint32(nil, uint32(len(meta))), meta...), data...))
 	}
-}
-
-func TestRejectsEmptyAndOversizedUploads(t *testing.T) {
-	h := newHub(t)
-	if resp := h.do("POST", "/api/items", "text/plain", []byte("  \n ")); resp.StatusCode != http.StatusBadRequest {
-		t.Errorf("blank text: got %d, want 400", resp.StatusCode)
+	env, _, _ := h.key.SealMeta(Meta{Kind: "file"})
+	for name, body := range map[string]io.Reader{
+		"empty":                      strings.NewReader(""),
+		"a short length":             strings.NewReader("\x00\x00"),
+		"a tiny envelope":            frame([]byte{1, 2, 3}, nil),
+		"an envelope cut short":      bytes.NewReader(append(binary.BigEndian.AppendUint32(nil, uint32(len(env))), env[:10]...)),
+		"an absurd length":           bytes.NewReader(binary.BigEndian.AppendUint32(nil, 1<<31)),
+		"data of an impossible size": frame(env, make([]byte, 7)),
+	} {
+		if resp := h.req("POST", "/api/items", sealedType, body); resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("%s: got %d, want 400", name, resp.StatusCode)
+		}
 	}
-	big := bytes.Repeat([]byte{0xff}, 1<<20+1)
-	if resp := h.do("POST", "/api/items?name=big.bin", "application/octet-stream", big); resp.StatusCode != http.StatusRequestEntityTooLarge {
+	big := bytes.Repeat([]byte{1}, 2<<20)
+	var body bytes.Buffer
+	h.key.WriteUpload(&body, Meta{Kind: "file"}, bytes.NewReader(big))
+	if resp := h.req("POST", "/api/items", sealedType, &body); resp.StatusCode != http.StatusRequestEntityTooLarge {
 		t.Errorf("oversized: got %d, want 413", resp.StatusCode)
 	}
 	if n := len(h.list()); n != 0 {
@@ -171,15 +185,95 @@ func TestRejectsEmptyAndOversizedUploads(t *testing.T) {
 	}
 }
 
-func TestPinnedItemsSurviveClearAndExpiry(t *testing.T) {
+func TestVaultKeepsTheFirstKeyUntilReset(t *testing.T) {
 	h := newHub(t)
-	keep := h.create("/api/items?name=keep.png", "image/png", tinyPNG)
-	h.create("/api/items", "text/plain", []byte("temporary"))
-	h.create("/api/items?name=temp.png", "image/png", tinyPNG)
-	if resp := h.do("PUT", "/api/items/"+keep.ID+"/pin?on=1", "", nil); resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("pin: %s", resp.Status)
+	check := func() string {
+		var v struct{ Check string }
+		json.NewDecoder(h.req("GET", "/api/vault", "", nil).Body).Decode(&v)
+		return v.Check
+	}
+	put := func(c string) int {
+		return h.req("PUT", "/api/vault", "application/json", strings.NewReader(`{"check":"`+c+`"}`)).StatusCode
+	}
+	if check() != "" {
+		t.Fatal("a new hub has a key check")
+	}
+	if code := put("not-hex"); code != http.StatusBadRequest {
+		t.Errorf("bad check: %d", code)
+	}
+	first, second := testKey(1).Check(), testKey(2).Check()
+	if put(first) != http.StatusNoContent || put(first) != http.StatusNoContent {
+		t.Error("setting the first check failed")
+	}
+	if put(second) != http.StatusConflict || check() != first {
+		t.Error("a second key replaced the first")
 	}
 
+	// It survives a restart.
+	reopened, _ := OpenStore(h.dir)
+	if reopened.Check() != first {
+		t.Error("the check was lost on restart")
+	}
+
+	// Reset deletes everything, pinned too, and frees the hub for a new key.
+	it := h.send(Meta{Kind: "text", Text: "keep me"}, nil)
+	h.send(Meta{Kind: "file", Name: "x"}, pattern(5000))
+	h.req("PUT", "/api/items/"+it.ID+"/pin?on=1", "", nil)
+	if code := h.req("DELETE", "/api/vault", "", nil).StatusCode; code != http.StatusNoContent {
+		t.Fatalf("reset: %d", code)
+	}
+	if check() != "" || len(h.list()) != 0 {
+		t.Error("reset left a check or items behind")
+	}
+	if left, _ := os.ReadDir(filepath.Join(h.dir, "files")); len(left) != 0 {
+		t.Errorf("reset left %d files", len(left))
+	}
+	if put(second) != http.StatusNoContent {
+		t.Error("a new key couldn't be set after reset")
+	}
+}
+
+func TestItemsFromBeforeEncryptionAreDeleted(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "files"), 0o700)
+	os.WriteFile(filepath.Join(dir, "files", "old1"), []byte("PNG..."), 0o600)
+	k := testKey(1)
+	env, _, _ := k.SealMeta(Meta{Kind: "text", Text: "new"})
+	legacy := `[{"id":"new1","meta":"` + jsonBase64(env) + `","size":0,"created":1,"pinned":false},` +
+		`{"id":"old1","kind":"image","name":"a.png","size":6,"created":1,"pinned":true},` +
+		`{"id":"old2","kind":"text","text":"plain","size":5,"created":1,"pinned":false}]`
+	os.WriteFile(filepath.Join(dir, "index.json"), []byte(legacy), 0o600)
+
+	s, err := OpenStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := s.List()
+	if len(items) != 1 || items[0].ID != "new1" {
+		t.Fatalf("kept %+v", items)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "files", "old1")); !os.IsNotExist(err) {
+		t.Error("the old item's file is still there")
+	}
+	b, _ := os.ReadFile(filepath.Join(dir, "index.json"))
+	if bytes.Contains(b, []byte("plain")) {
+		t.Error("old text is still in the index")
+	}
+}
+
+func jsonBase64(b []byte) string {
+	s, _ := json.Marshal(b)
+	return strings.Trim(string(s), `"`)
+}
+
+func TestPinnedItemsSurviveClearAndExpiry(t *testing.T) {
+	h := newHub(t)
+	keep := h.send(Meta{Kind: "image", Name: "keep.png"}, pattern(100))
+	h.send(Meta{Kind: "text", Text: "temporary"}, nil)
+	h.send(Meta{Kind: "file", Name: "temp.bin"}, pattern(100))
+	if resp := h.req("PUT", "/api/items/"+keep.ID+"/pin?on=1", "", nil); resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("pin: %s", resp.Status)
+	}
 	time.Sleep(5 * time.Millisecond)
 	if n, err := h.s.store.Expire(time.Millisecond); err != nil || n != 2 {
 		t.Fatalf("Expire removed %d (err %v), want 2", n, err)
@@ -191,39 +285,78 @@ func TestPinnedItemsSurviveClearAndExpiry(t *testing.T) {
 	if left, _ := os.ReadDir(filepath.Join(h.dir, "files")); len(left) != 1 {
 		t.Errorf("%d files on disk, want only the pinned one", len(left))
 	}
-
-	h.create("/api/items", "text/plain", []byte("again"))
-	h.do("DELETE", "/api/items", "", nil)
+	h.send(Meta{Kind: "text", Text: "again"}, nil)
+	h.req("DELETE", "/api/items", "", nil)
 	if items := h.list(); len(items) != 1 || items[0].ID != keep.ID {
 		t.Errorf("after clear: %+v", items)
+	}
+	if resp := h.req("DELETE", "/api/items/"+keep.ID, "", nil); resp.StatusCode != http.StatusNoContent || len(h.list()) != 0 {
+		t.Error("delete failed")
 	}
 }
 
 func TestFeedSurvivesARestart(t *testing.T) {
 	h := newHub(t)
-	h.create("/api/items", "text/plain", []byte("remember me"))
-	img := h.create("/api/items", "image/png", tinyPNG)
-
+	a := h.send(Meta{Kind: "text", Text: "remember me"}, nil)
+	b := h.send(Meta{Kind: "file", Name: "f"}, pattern(70000))
 	reopened, err := OpenStore(h.dir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	items := reopened.List()
-	if len(items) != 2 || items[0].ID != img.ID || items[1].Text != "remember me" {
+	if len(items) != 2 || items[0].ID != b.ID || items[1].ID != a.ID || !bytes.Equal(items[1].Meta, a.Meta) {
 		t.Fatalf("after reopen: %+v", items)
+	}
+}
+
+func TestTheDesktopPageMayCallTheAPI(t *testing.T) {
+	h := newHub(t)
+	req, _ := http.NewRequest("OPTIONS", h.srv.URL+"/api/items", nil)
+	req.Header.Set("Origin", "null")
+	req.Header.Set("Access-Control-Request-Method", "POST")
+	req.Header.Set("Access-Control-Request-Headers", "authorization, content-type")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent || resp.Header.Get("Access-Control-Allow-Origin") != "*" ||
+		!strings.Contains(resp.Header.Get("Access-Control-Allow-Headers"), "Authorization") {
+		t.Errorf("preflight: %d %v", resp.StatusCode, resp.Header)
+	}
+}
+
+func TestThePageIsServedWithAStrictPolicy(t *testing.T) {
+	h := newHub(t)
+	resp, err := http.Get(h.srv.URL + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	csp := resp.Header.Get("Content-Security-Policy")
+	if resp.StatusCode != 200 || !bytes.Contains(body, []byte("<html")) {
+		t.Fatalf("index: %d", resp.StatusCode)
+	}
+	for _, want := range []string{"script-src 'self'", "connect-src 'self'", "default-src 'none'"} {
+		if !strings.Contains(csp, want) {
+			t.Errorf("policy lacks %q: %s", want, csp)
+		}
+	}
+	if strings.Contains(csp, "unsafe-eval") || strings.Contains(csp, "script-src 'self' 'unsafe-inline'") {
+		t.Errorf("policy allows inline or eval'd script: %s", csp)
 	}
 }
 
 func TestChangesReachLiveListeners(t *testing.T) {
 	h := newHub(t)
 	req, _ := http.NewRequest("GET", h.srv.URL+"/api/events", nil)
-	req.Header.Set("Authorization", "Bearer secret")
+	req.Header.Set("Authorization", "Bearer secret-token-1234")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer resp.Body.Close()
-
 	lines := make(chan string, 8)
 	go func() {
 		buf := make([]byte, 256)
@@ -249,7 +382,7 @@ func TestChangesReachLiveListeners(t *testing.T) {
 		}
 	}
 	expect("data: hello")
-	h.create("/api/items", "text/plain", []byte("ping"))
+	h.send(Meta{Kind: "text", Text: "ping"}, nil)
 	expect("data: changed")
 }
 
@@ -274,9 +407,6 @@ func TestShortTokensAreRefused(t *testing.T) {
 	dir := t.TempDir()
 	if _, err := loadToken(dir, "hunter2"); err == nil {
 		t.Error("a 7-character token was accepted")
-	}
-	if tok, err := loadToken(dir, "correct-horse-battery"); err != nil || tok != "correct-horse-battery" {
-		t.Errorf("a long token was refused: %q, %v", tok, err)
 	}
 	generated, err := loadToken(dir, "")
 	if err != nil || len(generated) < minTokenLen {

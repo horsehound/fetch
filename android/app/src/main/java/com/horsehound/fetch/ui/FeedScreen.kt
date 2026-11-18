@@ -122,8 +122,9 @@ fun FeedScreen(
             } else {
                 Notice(
                     icon = Icons.Outlined.WifiTethering,
-                    title = "Connect to your hub",
-                    text = "Enter the address and token your Fetch hub printed when it started.",
+                    title = "Pair with your hub",
+                    text = model.problem ?: ("Scan the pairing code from a device that is already set up, " +
+                        "or set up a new hub. Everything you send is encrypted on this phone."),
                 ) {
                     OutlinedButton(onClick = onSettings) { Text("Open Settings") }
                 }

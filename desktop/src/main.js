@@ -1,33 +1,37 @@
 'use strict';
 // Fetch for desktop: a hotkey pops up a small "Throw" box; whatever you put
-// in it is uploaded to your hub in the background. The full window is the
-// hub's own web page.
+// in it is encrypted and uploaded to your hub in the background. The full
+// window is the same page the hub serves, but the copy built into this app,
+// so a hub that misbehaves can't hand it different code.
 
 const {
   app, BrowserWindow, Menu, Notification, Tray,
-  globalShortcut, ipcMain, nativeImage, screen, session, shell,
+  globalShortcut, ipcMain, nativeImage, protocol, screen, session, shell,
 } = require('electron');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const config = require('./config');
 const hub = require('./hub');
+const seal = require('./seal');
 
 const APP_ID = 'com.horsehound.fetch';
-const HUB_PARTITION = 'persist:hub';
+const PAGE_SCHEME = 'fetch-app';
+const PAGE_URL = `${PAGE_SCHEME}://page/index.html`;
 
 app.setName('Fetch');
 app.setAppUserModelId(APP_ID); // lets Windows attribute notifications to the app
 
 const store = config.open(path.join(app.getPath('userData'), 'config.json'));
 
-// Browsers only allow copying pictures to the clipboard on https pages. A hub
-// on your home network is plain http, so tell the engine to trust that one
-// address. This has to be decided before the app is ready, hence at startup.
-const trustedHttpOrigin = insecureOrigin(store.get().url);
-if (trustedHttpOrigin) {
-  app.commandLine.appendSwitch('unsafely-treat-insecure-origin-as-secure', trustedHttpOrigin);
-}
+// The page and its scripts, as the hub serves them (hub/web in the repo).
+const WEB_DIR = app.isPackaged ? path.join(process.resourcesPath, 'web') : path.join(__dirname, '..', '..', 'hub', 'web');
+
+// The page is served from its own scheme, as a secure origin (so the
+// clipboard works with any hub) with its own content policy.
+protocol.registerSchemesAsPrivileged([
+  { scheme: PAGE_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } },
+]);
 
 let tray = null;
 let quick = null;
@@ -46,7 +50,7 @@ if (!app.requestSingleInstanceLock()) {
 
 function start() {
   if (process.platform !== 'darwin') Menu.setApplicationMenu(null); // macOS needs its menu for Cmd+C / Cmd+V
-  prepareHubSession();
+  servePage();
   createQuick();
   createTray();
   const hotkey = store.get().hotkey;
@@ -140,7 +144,9 @@ ipcMain.on('quick:throw', async (event, payload) => {
   if (!fromQuick(event)) return;
   hideQuick();
   try {
-    await hub.send(store.get(), payload);
+    const cfg = store.get();
+    await hub.verify(cfg); // never send with a key the other devices don't have
+    await hub.send(cfg, payload);
     quick.webContents.send('quick:thrown', payload.id);
   } catch (err) {
     // Hand the draft back so nothing is lost, and say so.
@@ -163,35 +169,56 @@ function notify(title, body, onClick) {
 
 // -------------------------------------------------------------- Full window
 
-function insecureOrigin(url) {
-  return url.startsWith('http://') ? new URL(url).origin : '';
-}
+const PAGE_TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8' };
 
-// The full window shows the hub's own page. Requests to the hub get the token
-// attached here, so there is no second login inside the app.
-function prepareHubSession() {
-  const ses = session.fromPartition(HUB_PARTITION);
-  const cfg = store.get();
-  ses.webRequest.onBeforeSendHeaders(
-    { urls: config.isConfigured(cfg) ? [`${cfg.url}/*`] : ['http://invalid.invalid/*'] },
-    (details, callback) => {
-      details.requestHeaders.Authorization = `Bearer ${store.get().token}`;
-      callback({ requestHeaders: details.requestHeaders });
-    },
-  );
+function servePage() {
+  protocol.handle(PAGE_SCHEME, async (request) => {
+    const u = new URL(request.url);
+    const file = path.normalize(path.join(WEB_DIR, decodeURIComponent(u.pathname)));
+    const type = PAGE_TYPES[path.extname(file)];
+    if (u.host !== 'page' || !file.startsWith(WEB_DIR + path.sep) || !type) return new Response('not found', { status: 404 });
+    let body;
+    try { body = await fs.promises.readFile(file); } catch { return new Response('not found', { status: 404 }); }
+    // The page holds the key: it may run only its own scripts and talk only to the hub.
+    const hubOrigin = store.get().url || "'none'";
+    return new Response(body, {
+      headers: {
+        'Content-Type': type,
+        'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
+          `img-src 'self' blob: data:; connect-src ${hubOrigin}; base-uri 'none'; form-action 'none'`,
+      },
+    });
+  });
   // The page needs to write to the clipboard and nothing else.
   const allowed = new Set(['clipboard-sanitized-write']);
-  ses.setPermissionRequestHandler((_wc, permission, callback) => callback(allowed.has(permission)));
-  ses.setPermissionCheckHandler((_wc, permission) => allowed.has(permission));
+  session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => callback(allowed.has(permission)));
+  session.defaultSession.setPermissionCheckHandler((_wc, permission) => allowed.has(permission));
 }
 
-function showFull() {
+const fromFull = (event) => full && !full.isDestroyed() && event.sender === full.webContents;
+
+// What the page needs to work: where the hub is, the token and the key.
+ipcMain.on('page:config', (event) => {
+  if (!fromFull(event)) { event.returnValue = null; return; }
   const cfg = store.get();
-  if (!config.isConfigured(cfg)) return showSettings();
+  event.returnValue = config.isConfigured(cfg) ? { hub: cfg.url, token: cfg.token, key: cfg.key, device: cfg.device } : null;
+});
+ipcMain.on('page:open-settings', (event) => { if (fromFull(event)) showSettings(); });
+// "Start over" in the page: the hub was reset and has a new key.
+ipcMain.handle('page:set-key', (event, key) => {
+  if (!fromFull(event)) return;
+  seal.keyFromText(key);
+  store.set({ key });
+  full.webContents.reload();
+});
+
+function showFull({ addDevice = false } = {}) {
+  if (!config.isConfigured(store.get())) return showSettings();
   if (full && !full.isDestroyed()) {
     if (full.isMinimized()) full.restore();
     full.show();
     full.focus();
+    if (addDevice) full.webContents.send('page:add-device');
     return;
   }
   full = new BrowserWindow({
@@ -203,31 +230,31 @@ function showFull() {
     icon: appIcon(),
     backgroundColor: '#1c1c1c',
     autoHideMenuBar: true,
-    webPreferences: { partition: HUB_PARTITION, contextIsolation: true, sandbox: true },
+    webPreferences: {
+      preload: path.join(__dirname, 'page-preload.js'),
+      contextIsolation: true,
+      sandbox: true,
+    },
   });
-  const home = `${cfg.url}/?device=${encodeURIComponent(cfg.device)}`;
-  full.loadURL(home);
-
+  full.loadURL(PAGE_URL);
   const wc = full.webContents;
-  wc.on('did-fail-load', (_e, code, _desc, url, isMainFrame) => {
-    if (!isMainFrame || code === -3) return; // -3: a navigation we cancelled ourselves
-    full.loadFile(path.join(__dirname, 'offline.html'), { query: { hub: cfg.url, retry: home } });
-  });
-  // Only the hub lives in this window. Pictures open in a plain child window;
-  // every other link goes to the real browser.
-  const isHub = (url) => url.startsWith(`${cfg.url}/`);
-  const isLocal = (url) => url.startsWith('file://');
+  if (addDevice) wc.once('did-finish-load', () => wc.send('page:add-device'));
+  // Pictures open in a plain child window; every other link goes to the real browser.
   wc.setWindowOpenHandler(({ url }) => {
-    if (isHub(url)) return { action: 'allow', overrideBrowserWindowOptions: { autoHideMenuBar: true, icon: appIcon() } };
+    if (url.startsWith('blob:')) return { action: 'allow', overrideBrowserWindowOptions: { autoHideMenuBar: true, icon: appIcon(), backgroundColor: '#1c1c1c' } };
     if (/^https?:\/\//.test(url)) shell.openExternal(url);
     return { action: 'deny' };
   });
   wc.on('will-navigate', (event, url) => {
-    if (isHub(url) || isLocal(url)) return;
+    if (url.startsWith(`${PAGE_SCHEME}://page/`)) return;
     event.preventDefault();
     if (/^https?:\/\//.test(url)) shell.openExternal(url);
   });
   full.on('closed', () => { full = null; });
+}
+
+function reloadFull() {
+  if (full && !full.isDestroyed()) full.webContents.reload();
 }
 
 // ----------------------------------------------------------------- Settings
@@ -239,8 +266,8 @@ function showSettings() {
     return;
   }
   settings = new BrowserWindow({
-    width: 460,
-    height: 560,
+    width: 480,
+    height: 660,
     resizable: false,
     minimizable: false,
     maximizable: false,
@@ -264,58 +291,78 @@ function showSettings() {
 
 const fromSettings = (event) => settings && event.sender === settings.webContents;
 
-ipcMain.handle('settings:get', (event) => {
-  if (!fromSettings(event)) return null;
-  return { ...store.get(), platform: process.platform, hotkeyActive: Boolean(registeredHotkey) };
-});
+function settingsView() {
+  const cfg = store.get();
+  const paired = config.isConfigured(cfg);
+  return {
+    url: cfg.url, device: cfg.device, hotkey: cfg.hotkey, openAtLogin: cfg.openAtLogin,
+    platform: process.platform, hotkeyActive: Boolean(registeredHotkey),
+    paired, fingerprint: paired ? seal.fingerprint(seal.keyFromText(cfg.key)) : '',
+  };
+}
+
+ipcMain.handle('settings:get', (event) => (fromSettings(event) ? settingsView() : null));
 
 // While the shortcut field is recording, our own hotkey must not fire.
 ipcMain.on('settings:recording', (event, on) => {
   if (fromSettings(event)) globalShortcut.setSuspended(Boolean(on));
 });
 
-// Returns { ok: true } or { ok: false, field, message }. With `force`, a hub
-// that can't be reached right now is saved anyway.
-ipcMain.handle('settings:save', async (event, draft, force) => {
+function hubFailure(err) {
+  const message = err instanceof hub.HubError || err.message ? err.message : 'Something went wrong.';
+  return { ok: false, message, canReset: Boolean(err.canReset) };
+}
+
+function pairedWith(creds) {
+  store.set(creds);
+  rebuildTrayMenu();
+  if (full && !full.isDestroyed()) reloadFull();
+  else showFull();
+  return { ok: true, view: settingsView() };
+}
+
+// Joins with a pairing link from another device.
+ipcMain.handle('settings:pair', async (event, link) => {
+  if (!fromSettings(event)) return { ok: false };
+  try { return pairedWith(await hub.pair(link)); } catch (err) { return hubFailure(err); }
+});
+
+// First device: the hub's address and token; this computer creates the key.
+ipcMain.handle('settings:set-up', async (event, url, token, reset) => {
+  if (!fromSettings(event)) return { ok: false };
+  try {
+    const result = pairedWith(await hub.setUp(url, token, { reset: Boolean(reset) }));
+    showFull({ addDevice: true });
+    return result;
+  } catch (err) { return hubFailure(err); }
+});
+
+ipcMain.handle('settings:unpair', (event) => {
+  if (!fromSettings(event)) return null;
+  store.set({ url: '', token: '', key: '' });
+  if (full && !full.isDestroyed()) full.destroy();
+  rebuildTrayMenu();
+  return settingsView();
+});
+
+ipcMain.on('settings:add-device', (event) => { if (fromSettings(event)) showFull({ addDevice: true }); });
+
+// This computer's own settings. Returns { ok: true } or { ok: false, field, message }.
+ipcMain.handle('settings:save', (event, draft) => {
   if (!fromSettings(event)) return { ok: false, message: 'Not allowed.' };
   const before = store.get();
-  const next = config.clean({ ...before, ...draft });
-
-  if (!next.url) return { ok: false, field: 'url', message: "That address doesn't look right." };
-  if (!next.token) return { ok: false, field: 'token', message: 'Enter the token the hub printed when it started.' };
-
+  const next = config.clean({ ...before, device: draft.device, hotkey: draft.hotkey, openAtLogin: draft.openAtLogin });
   globalShortcut.setSuspended(false);
   if (!registerHotkey(next.hotkey)) {
     registerHotkey(before.hotkey);
     return { ok: false, field: 'hotkey', message: 'That shortcut is taken by another app, or the system won\'t allow it.' };
   }
-  if (!force) {
-    try {
-      await hub.check(next);
-    } catch (err) {
-      registerHotkey(before.hotkey);
-      return { ok: false, field: 'url', canForce: true, message: err instanceof hub.HubError ? err.message : 'Could not check the hub.' };
-    }
-  }
-
   store.set(next);
   syncLoginItem();
-  prepareHubSession();
   rebuildTrayMenu();
-  if (full && !full.isDestroyed()) full.destroy(); // it shows the old hub
-
-  if (insecureOrigin(next.url) !== trustedHttpOrigin) {
-    // The trusted-address switch is read once at startup; restart to apply it.
-    const flags = new Set(['--hidden', '--throw', '--settings']);
-    app.relaunch({
-      execPath: process.env.APPIMAGE || process.execPath,
-      args: process.argv.slice(1).filter((arg) => !flags.has(arg)), // come back with the full window
-    });
-    app.exit(0);
-    return { ok: true };
-  }
+  if (next.device !== before.device) reloadFull();
   if (settings && !settings.isDestroyed()) settings.close();
-  showFull();
+  if (config.isConfigured(next)) showFull();
   return { ok: true };
 });
 

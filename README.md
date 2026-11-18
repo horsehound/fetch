@@ -11,7 +11,7 @@
 
 The parts:
 
-- **Hub** (`hub/`): one small program you host yourself, on a Proxmox container at home or a small VPS. It stores the feed and serves the web page.
+- **Hub** (`hub/`): one small program you host yourself, on a Proxmox container at home or a small VPS. It stores the feed (encrypted, without the key) and serves the web page.
 - **Desktop app** (`desktop/`): for Windows, macOS and Linux. A hotkey pops up a small Throw box; paste, hit Throw, and it uploads in the background. Its full window is the web page.
 - **Web page**: the same feed in any browser. Nothing to install.
 - **iPhone app** (`Sources/`, `Share/`): the feed, a Paste button, a photo picker, and "Fetch" in the share sheet.
@@ -21,20 +21,21 @@ Unpinned items delete themselves after 7 days. Pin what you want to keep.
 
 Shell commands and code are recognised, with their language, and shown as highlighted code blocks on every device.
 
+**End-to-end encrypted.** Everything is encrypted on the device that sends it and decrypted on the one that shows it: text, pictures, files, their names and types, even which device sent them. The key lives only on your devices; the hub stores scrambled data and can't read it. Devices join by pairing (a QR code or a link), see [Pairing](#2-pair-your-devices).
+
 ## 1. Run the hub
 
-The hub is a single file with no dependencies. Pick whichever fits where it will live. Each way ends with the hub printing its address and an access token; that pair is all a device needs.
+The hub is a single file with no dependencies. Pick whichever fits where it will live. Each way ends with the hub printing its address and an access token; the first device needs both (see [Pairing](#2-pair-your-devices)).
 
 ### On your home network (Proxmox LXC, NAS, spare machine)
 
-Download `fetch-linux-amd64` from the latest [release](../../releases), then:
+On any Linux with systemd (a Debian or Ubuntu LXC on Proxmox is ideal), as root:
 
 ```sh
-install -m 755 fetch-linux-amd64 /usr/local/bin/fetch
-cp fetch-hub.service /etc/systemd/system/      # the file is in hub/ in this repo
-systemctl daemon-reload && systemctl enable --now fetch-hub
-journalctl -u fetch-hub | grep -E 'open|token'
+curl -fsSL https://raw.githubusercontent.com/horsehound/fetch/main/hub/install.sh | sh
 ```
+
+It installs the newest release (checked against its published checksums), starts the `fetch-hub` service, prints the address and token, and turns on daily automatic updates (see [Updating](#updating-the-hub)). By hand instead: download `fetch-linux-amd64` (or `-arm64`) from the latest [release](../../releases), `install -m 755` it as `/usr/local/bin/fetch`, copy `hub/fetch-hub.service` to `/etc/systemd/system/`, and `systemctl enable --now fetch-hub`.
 
 Devices reach it at `http://<its-ip>:8787` while they are on your network (or on a VPN into it).
 
@@ -50,14 +51,17 @@ docker compose -f docker-compose.vps.yml logs hub | grep token
 
 Devices then use `https://fetch.example.com`, at home or away, no VPN.
 
-Without Docker: run the binary as above with `-addr 127.0.0.1:8787` and put any reverse proxy in front (`caddy reverse-proxy --from fetch.example.com --to localhost:8787`), or hand the hub a certificate directly with `-cert` and `-key`.
+Without Docker: install as above, change the service to `-addr 127.0.0.1:8787` (`systemctl edit --full fetch-hub`), and put any reverse proxy in front (`caddy reverse-proxy --from fetch.example.com --to localhost:8787`), or hand the hub a certificate directly with `-cert` and `-key`.
 
 ### With Docker at home
 
 ```sh
+curl -fsSLO https://raw.githubusercontent.com/horsehound/fetch/main/docker-compose.yml
 docker compose up -d
 docker compose logs hub | grep token
 ```
+
+The image (`ghcr.io/horsehound/fetch`, for amd64 and arm64) comes with every release.
 
 ### Options
 
@@ -70,9 +74,41 @@ docker compose logs hub | grep token
 | `-max-mb` | `500` | largest upload |
 | `-cert`, `-key` / `FETCH_CERT`, `FETCH_KEY` | none | serve https directly with this certificate |
 
-The token is the only lock on the feed: anyone who has the address and the token can read and delete everything in it.
+The token decides who may use the hub. It can't read anything: whoever has the token but not the key can delete or withhold items, but not read, change or fake them. Keep both private anyway.
 
-## 2. Laptop and PC
+### Updating the hub
+
+Every push to this repo makes a release. How the hub gets it depends on how you installed it:
+
+| Installed with | Update |
+|---|---|
+| `install.sh` | nothing to do: it checks once a day and updates itself. Right now: `fetch update`. Turn the daily check off with `systemctl disable --now fetch-hub-update.timer` |
+| the binary by hand | `sudo fetch update` (installs the newest release, checks its checksum, restarts `fetch-hub`). `fetch update -check` only looks |
+| Docker | `docker compose pull && docker compose up -d` (add `-f docker-compose.vps.yml` for the VPS setup) |
+
+Your items, the token and the key's check stay where they are; devices reconnect by themselves. A hub from before `fetch update` existed updates once by running `install.sh` (above); it keeps your service settings and data.
+
+Forks: releases come from the repository that built them, so a fork's hub updates from the fork. Set `FETCH_REPO=you/fetch` for `install.sh`, and `FETCH_IMAGE=ghcr.io/you/fetch:latest` for Docker.
+
+## 2. Pair your devices
+
+The first device creates the key; every other device gets it from one that already has it. The key never touches the hub.
+
+1. **The first device**: install Fetch on it (see below), and in the first-device part of its settings enter the hub's address and token, then **Set up**.
+2. **Every other device:** on a device that's set up, open **Add a device**. It shows a QR code and a pairing link.
+   - iPhone: scan the QR code with the Camera app; it opens Fetch, which asks to pair.
+   - Android: **Settings → Scan code** in Fetch.
+   - Computers and browsers: copy the link (or have it sent to you) and paste it under **Pairing link**.
+
+The easiest order: set up a computer first, then scan its code with the phones. Every paired device shows the same key fingerprint (like `3F9A-0C21`), so you can check at a glance that they match.
+
+The pairing link holds the address, the token and the key: it opens everything you send. Show it to your own devices, don't post it.
+
+**Start over** (in the same settings) deletes everything on the hub, pinned items too, and makes a new key; every other device then has to pair again. That's also the way out if you lose all your devices at once: without the key nobody can read the old items, you included.
+
+A hub from before encryption deletes its old, unencrypted items when it is updated.
+
+## 3. Laptop and PC
 
 ### Desktop app
 
@@ -88,12 +124,12 @@ Download the build for your system from the latest [release](../../releases/late
 
 The warnings on Windows and macOS are there because the builds aren't signed with a paid developer certificate.
 
-On first start, enter the hub address and token. After that the app sits in the tray:
+On first start, Settings opens: paste a pairing link, or set up the hub if this is the first device. After that the app sits in the tray:
 
 - **Ctrl+Alt+F** (changeable in Settings) opens the **Throw** box wherever you are. Type or paste text, pictures or files, press **Enter** or **Throw**. The box closes at once and the upload runs in the background. If the hub can't be reached you get a notification and your draft is back in the box.
 - **Open Fetch** in the box or the tray opens the full window: the feed, live, exactly as in the browser. Here the Copy button works on pictures even when the hub is plain http.
 - **Esc** or a click outside closes the box and keeps what you typed.
-- Settings also has "Start Fetch when I log in".
+- Settings also has "Start Fetch when I log in" and **Add a device…**.
 
 **Linux on Wayland:** whether an app may claim a global shortcut is up to the desktop. If Ctrl+Alt+F does nothing, add a custom shortcut in your system's keyboard settings that runs `fetch-desktop --throw` (for the AppImage: the path to the file, then `--throw`). That works everywhere.
 
@@ -101,20 +137,23 @@ The app has been driven end to end on Linux. The Windows and macOS builds come o
 
 ### In a browser
 
-Open `http://<hub-address>:8787`, enter the token once, and keep the tab pinned.
+Open `http://<hub-address>:8787`, paste a pairing link once (or set up the hub there), and keep the tab pinned. The key stays in that browser.
 
 - **Ctrl+V anywhere** on the page sends what's on your clipboard: text, a screenshot, a copied image.
 - **Drag files** onto the page to send them.
 - **Click a text item** to copy it. **Save** downloads a picture or file.
 
-Copying a *picture* straight to the clipboard needs the page to be served over https; browsers don't allow it on plain http. Everything else works either way. With the VPS setup above, any hub behind https, or the desktop app, the Copy button appears on pictures.
+Copying a *picture* straight to the clipboard needs the page to be served over https; browsers don't allow it on plain http. Everything else works either way, encryption included. With the VPS setup above, any hub behind https, or the desktop app, the Copy button appears on pictures.
+
+One thing to know about the browser: the page itself, with its encryption code, comes from the hub each time you open it. If someone took over your hub, they could hand your browser a changed page that sends the key away. The apps don't have that weak spot: they carry their own code. On a hub you run yourself that's a small risk, but if you'd rather not take it, use the apps.
 
 ### From the terminal (optional)
 
 The same binary is a command-line client. `fetch-windows-amd64.exe` is in the release for the PC.
 
 ```sh
-fetch login http://<hub-address>:8787 <token>
+fetch pair '<pairing link>'       # or: fetch init <hub-address> <token> on the first device
+fetch link                        # the pairing link for another device
 fetch send screenshot.png notes.pdf
 fetch send -t "some text"
 fetch latest                      # prints the newest text
@@ -131,7 +170,7 @@ fetch latest | wl-copy            # Linux: newest text into the clipboard
 fetch send -t (Get-Clipboard -Raw)   # Windows: send clipboard text
 ```
 
-## 3. iPhone
+## 4. iPhone
 
 The app isn't on the App Store. Every push to this repo builds it with GitHub Actions and publishes `Fetch.ipa` in the [releases](../../releases); you install that file with [SideStore](https://sidestore.io) or AltStore, which sign it with your own Apple ID. No Mac needed.
 
@@ -144,7 +183,7 @@ The app isn't on the App Store. Every push to this repo builds it with GitHub Ac
 
    Updates then show up in SideStore by themselves. Without the source: download `Fetch.ipa` from the latest [release](../../releases), open **My Apps**, tap **+**, and pick the file.
 3. When it asks about app extensions, **keep them**. The extension is what puts Fetch in the share sheet. It uses one extra App ID on a free Apple account.
-4. Open Fetch and enter the hub address and token (`192.168.1.20:8787` or `fetch.example.com`; the app adds http or https itself).
+4. Open Fetch and pair it: scan the QR code from **Add a device** on another device with the Camera app, or paste the pairing link in Settings. On the first device, set up the hub with its address and token instead (`192.168.1.20:8787` or `fetch.example.com`; the app adds http or https itself).
 
 With a free Apple ID, sideloaded apps count against Apple's limit of three and have to be refreshed every seven days, which SideStore does for you.
 
@@ -158,12 +197,12 @@ Using it:
 
 The phone has to be able to reach the hub. A hub on your home network needs the same Wi-Fi, or a VPN such as Tailscale or WireGuard when you're out. A hub on a VPS with a domain works from anywhere.
 
-## 4. Android
+## 5. Android
 
 Every push also builds `Fetch.apk` and publishes it in the [releases](../../releases). It runs on Android 10 and later and asks for no permissions.
 
 1. On the phone, download `Fetch.apk` from the latest [release](../../releases/latest) and open it. The first time, Android asks whether your browser may install apps; allow it.
-2. Open Fetch and enter the hub address and token, exactly as on the iPhone.
+2. Open Fetch and pair it: **Scan code** and point it at **Add a device** on another device, or paste the pairing link. On the first device, set up the hub with its address and token instead.
 
 It works like the iPhone app:
 
@@ -175,7 +214,7 @@ It works like the iPhone app:
 
 ### Updates that install over the old version
 
-Android only installs an update on top of the app when both were signed with the same key. Out of the box every build is signed with a throwaway key, so a newer `Fetch.apk` has to replace the app: uninstall, install, enter the hub details again.
+Android only installs an update on top of the app when both were signed with the same key. Out of the box every build is signed with a throwaway key, so a newer `Fetch.apk` has to replace the app: uninstall, install, pair again.
 
 To get updates that simply install, give your repo a key of its own, once. `keytool` comes with Java; `gh` is the GitHub command line.
 
@@ -192,26 +231,24 @@ From the next build on, every `Fetch.apk` updates the one before it, and [Obtain
 
 ## API
 
-Everything is plain HTTP with `Authorization: Bearer <token>`.
+Everything is HTTP with `Authorization: Bearer <token>`, and every item is encrypted before it's sent, so items can't be posted with plain `curl` any more; use `fetch send` (above), which also works in scripts. The format, the key derivation, the pairing links and the hub's API are described in [spec/encryption.md](spec/encryption.md), with test vectors in `spec/vectors.json` that every implementation here is checked against.
 
 | | |
 |---|---|
-| `GET /api/items` | the feed, newest first. Text the hub recognises as code also carries `lang`, `lang_label` and `tokens` (the text split into `[class, text]` pairs for highlighting) |
-| `POST /api/items` | `text/plain` body → text; any other body (optional `?name=`) → picture or file; `multipart/form-data` also works |
-| `GET /api/items/{id}/raw` | the content (`?dl=1` forces a download) |
+| `GET /api/items` | the feed, newest first: id, encrypted metadata, size of the encrypted data, time, pinned |
+| `POST /api/items` | an encrypted item (`application/x-fetch-sealed`) |
+| `GET /api/items/{id}/raw` | the encrypted data |
 | `PUT /api/items/{id}/pin?on=1` | pin or unpin (`on=0`) |
 | `DELETE /api/items/{id}` | delete one |
 | `DELETE /api/items` | delete everything unpinned |
+| `GET`, `PUT`, `DELETE /api/vault` | the check value of the key, to tell matching devices apart; `DELETE` starts over |
 | `GET /api/events` | server-sent events; a `data:` line means the feed changed |
-
-```sh
-curl -H "Authorization: Bearer $TOKEN" --data-binary @photo.jpg "http://hub:8787/api/items?name=photo.jpg"
-```
 
 ## Building it yourself
 
 ```sh
 cd hub && go test ./... && go build -o fetch .
+node --test hub/webtest/*.test.js                # the web page's encryption and code detection
 ```
 
 ```sh
@@ -223,7 +260,8 @@ FETCH_HUB_BIN=../hub/fetch xvfb-run -a npm run test:e2e   # the real app against
 ```sh
 cd android
 ./gradlew testDebugUnitTest assembleDebug        # the Android app; needs a JDK (17+) and the Android SDK
+python3 ../tools/codegen/kotlin-tables.py        # after changing hub/web/fetch-code.js: the Android port's tables
 ./gradlew assembleDebug assembleDebugAndroidTest && ci/device-test.sh   # the real app on a phone or emulator against a real hub
 ```
 
-Everything is built by `.github/workflows/build.yml`: the hub on Linux, the desktop app on Windows, macOS and Linux runners, the Android app on Linux, and the iPhone app on a macOS runner (`xcodegen generate` creates the Xcode project from `project.yml`; the result is packaged unsigned for SideStore). `.github/workflows/android-test.yml` runs the Android app on an emulator whenever `android/` changes. Fork the repo and the same workflow builds your own copies.
+Everything is built by `.github/workflows/build.yml`: the hub on Linux, the desktop app on Windows, macOS and Linux runners, the Android app on Linux, and the iPhone app on a macOS runner (`xcodegen generate` creates the Xcode project from `project.yml`; its tests run on a simulator, and the result is packaged unsigned for SideStore). Every client's encryption is tested against `spec/vectors.json` and its code detection against `spec/code-corpus.json`. `.github/workflows/android-test.yml` runs the Android app on an emulator whenever `android/` changes. Fork the repo and the same workflow builds your own copies.

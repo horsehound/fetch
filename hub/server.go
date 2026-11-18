@@ -1,37 +1,34 @@
 package main
 
 import (
-	"bytes"
 	"crypto/rand"
 	"crypto/subtle"
-	_ "embed"
+	"embed"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"mime"
-	"mime/multipart"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
-	"unicode/utf8"
 )
 
-//go:embed web/index.html
-var indexHTML []byte
-
-const maxText = 1 << 20 // text items above 1 MB are stored as files instead
+// The web page: index.html plus its scripts.
+//
+//go:embed web
+var webFiles embed.FS
 
 const minTokenLen = 12
-
-var errEmpty = errors.New("nothing to store: the upload was empty")
 
 type server struct {
 	store     *Store
@@ -41,8 +38,6 @@ type server struct {
 
 	mu   sync.Mutex
 	subs map[chan struct{}]struct{}
-
-	code analyser
 }
 
 func runServe(args []string) {
@@ -79,7 +74,7 @@ func runServe(args []string) {
 	if err != nil {
 		log.Fatalf("cannot listen on %s: %v", *addr, err)
 	}
-	fmt.Printf("fetch hub %s\n", version)
+	fmt.Printf("fetch hub %s (end-to-end encrypted: this hub can't read what it stores)\n", version)
 	scheme := "http"
 	if *cert != "" {
 		scheme = "https"
@@ -100,9 +95,12 @@ func runServe(args []string) {
 
 func (s *server) routes() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /{$}", s.handleIndex)
-	mux.HandleFunc("POST /api/login", s.handleLogin)
+	mux.Handle("GET /", s.webHandler())
+	mux.HandleFunc("OPTIONS /api/", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) })
 	mux.HandleFunc("GET /api/info", s.auth(s.handleInfo))
+	mux.HandleFunc("GET /api/vault", s.auth(s.handleVault))
+	mux.HandleFunc("PUT /api/vault", s.auth(s.handleSetVault))
+	mux.HandleFunc("DELETE /api/vault", s.auth(s.handleResetVault))
 	mux.HandleFunc("GET /api/items", s.auth(s.handleList))
 	mux.HandleFunc("POST /api/items", s.auth(s.handleCreate))
 	mux.HandleFunc("DELETE /api/items", s.auth(s.handleClear))
@@ -110,7 +108,40 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("PUT /api/items/{id}/pin", s.auth(s.handlePin))
 	mux.HandleFunc("DELETE /api/items/{id}", s.auth(s.handleDelete))
 	mux.HandleFunc("GET /api/events", s.auth(s.handleEvents))
-	return mux
+	return cors(mux)
+}
+
+// cors lets the desktop app's built-in page talk to the hub. Access needs the
+// token in the Authorization header, never a cookie, so allowing any origin
+// opens nothing up.
+func cors(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			h := w.Header()
+			h.Set("Access-Control-Allow-Origin", "*")
+			h.Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+			h.Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE")
+			h.Set("Access-Control-Max-Age", "600")
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// webHandler serves the page. Its scripts hold the key once a browser is
+// paired, so the policy keeps them from loading code from anywhere else or
+// sending anything to any other address.
+func (s *server) webHandler() http.Handler {
+	sub, _ := fs.Sub(webFiles, "web")
+	files := http.FileServerFS(sub)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("Cache-Control", "no-cache")
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("Referrer-Policy", "no-referrer")
+		h.Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; "+
+			"img-src 'self' blob: data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+		files.ServeHTTP(w, r)
+	})
 }
 
 // ---- auth ----
@@ -121,13 +152,8 @@ func (s *server) tokenOK(got string) bool {
 
 func (s *server) auth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		got := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-		if got == "" {
-			if c, err := r.Cookie("fetch_token"); err == nil {
-				got = c.Value
-			}
-		}
-		if !s.tokenOK(got) {
+		if !s.tokenOK(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")) {
+			time.Sleep(300 * time.Millisecond) // blunt guessing
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -135,168 +161,117 @@ func (s *server) auth(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Token string `json:"token"`
-	}
-	json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&body)
-	if !s.tokenOK(strings.TrimSpace(body.Token)) {
-		time.Sleep(500 * time.Millisecond) // blunt guessing
-		http.Error(w, "wrong token", http.StatusUnauthorized)
-		return
-	}
-	http.SetCookie(w, &http.Cookie{
-		Name: "fetch_token", Value: s.token, Path: "/",
-		MaxAge: 365 * 24 * 3600, HttpOnly: true, SameSite: http.SameSiteStrictMode,
-		Secure: r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https",
-	})
-	w.WriteHeader(http.StatusNoContent)
-}
-
 // ---- handlers ----
-
-func (s *server) handleIndex(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("X-Content-Type-Options", "nosniff")
-	w.Header().Set("Referrer-Policy", "no-referrer")
-	w.Write(indexHTML)
-}
 
 func (s *server) handleInfo(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"version":   version,
+		"format":    formatVersion,
 		"ttl_hours": s.ttl.Hours(),
 		"max_mb":    s.maxUpload >> 20,
 	})
 }
 
-func (s *server) handleList(w http.ResponseWriter, r *http.Request) {
-	items := s.store.List()
-	s.code.annotate(items)
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+// The vault is just the fingerprint of the key the devices share. It tells a
+// new device whether it is the first (no fingerprint yet) and lets every
+// device confirm it has the same key as the others.
+func (s *server) handleVault(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"check": s.store.Check()})
 }
 
-// handleCreate accepts three shapes:
-//   - text/plain body                      -> text item
-//   - any other body, optional ?name=      -> image or file item
-//   - multipart/form-data ("file", "text") -> one item per part
-//
-// A body with no useful Content-Type and no name (what curl -d sends) becomes
-// a text item when it is short valid UTF-8, and a file otherwise.
-func (s *server) handleCreate(w http.ResponseWriter, r *http.Request) {
-	device := deviceName(r)
-	r.Body = http.MaxBytesReader(w, r.Body, s.maxUpload)
-	ct := baseType(r.Header.Get("Content-Type"))
-	name := r.URL.Query().Get("name")
+var checkFormat = regexp.MustCompile(`^[0-9a-f]{32}$`)
 
-	var created []Item
-	var err error
-	switch {
-	case ct == "multipart/form-data":
-		created, err = s.createMultipart(r, device)
-	case name == "" && (ct == "text/plain" || isVague(ct)):
-		var it Item
-		it, err = s.createMaybeText(r.Body, ct, device)
-		created = []Item{it}
-	default:
-		var it Item
-		it, err = s.store.AddFile(r.Body, name, ct, device)
-		created = []Item{it}
+func (s *server) handleSetVault(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Check string `json:"check"`
 	}
+	json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&body)
+	if !checkFormat.MatchString(body.Check) {
+		http.Error(w, "check must be 32 lowercase hex characters", http.StatusBadRequest)
+		return
+	}
+	switch err := s.store.SetCheck(body.Check); {
+	case errors.Is(err, errOtherKey):
+		http.Error(w, "this hub already uses a different key; pair this device from one that has it", http.StatusConflict)
+	case err != nil:
+		log.Printf("saving the key fingerprint failed: %v", err)
+		http.Error(w, "could not save the change", http.StatusInternalServerError)
+	default:
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func (s *server) handleResetVault(w http.ResponseWriter, r *http.Request) {
+	err := s.store.Reset()
+	s.finishChange(w, r, true, err)
+}
+
+func (s *server) handleList(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"items": s.store.List()})
+}
+
+// handleCreate stores one encrypted item. The body is the length of the
+// metadata envelope (4 bytes, big-endian), the envelope, then the encrypted
+// data. See spec/encryption.md.
+func (s *server) handleCreate(w http.ResponseWriter, r *http.Request) {
+	if mt, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type")); mt != sealedType {
+		http.Error(w, "This hub only stores end-to-end encrypted items. Update your Fetch app.", http.StatusUnsupportedMediaType)
+		return
+	}
+	body := http.MaxBytesReader(w, r.Body, 4+maxMeta+sealedSize(s.maxUpload))
+	var head [4]byte
+	if _, err := io.ReadFull(body, head[:]); err != nil {
+		s.uploadFailed(w, err)
+		return
+	}
+	n := binary.BigEndian.Uint32(head[:])
+	if n < metaOverhead || n > maxMeta {
+		s.uploadFailed(w, errBadUpload)
+		return
+	}
+	meta := make([]byte, n)
+	if _, err := io.ReadFull(body, meta); err != nil {
+		s.uploadFailed(w, err)
+		return
+	}
+	// The size limit is on what you send, so it counts the data alone.
+	data := http.MaxBytesReader(w, io.NopCloser(body), sealedSize(s.maxUpload))
+	it, err := s.store.Add(meta, data)
 	if err != nil {
-		var tooBig *http.MaxBytesError
-		switch {
-		case errors.As(err, &tooBig):
-			http.Error(w, fmt.Sprintf("too large: the limit is %d MB", s.maxUpload>>20), http.StatusRequestEntityTooLarge)
-		case errors.Is(err, errEmpty):
-			http.Error(w, err.Error(), http.StatusBadRequest)
-		default:
-			log.Printf("upload failed: %v", err)
-			http.Error(w, "could not store the upload", http.StatusInternalServerError)
-		}
+		s.uploadFailed(w, err)
 		return
 	}
 	s.broadcast()
-	writeJSON(w, http.StatusCreated, map[string]any{"items": created})
+	writeJSON(w, http.StatusCreated, map[string]any{"item": it})
 }
 
-func (s *server) createMaybeText(body io.Reader, ct, device string) (Item, error) {
-	buf, err := io.ReadAll(io.LimitReader(body, maxText+1))
-	if err != nil {
-		return Item{}, err
+func (s *server) uploadFailed(w http.ResponseWriter, err error) {
+	var tooBig *http.MaxBytesError
+	switch {
+	case errors.As(err, &tooBig):
+		http.Error(w, fmt.Sprintf("too large: the limit is %d MB", s.maxUpload>>20), http.StatusRequestEntityTooLarge)
+	case errors.Is(err, errBadUpload), errors.Is(err, io.EOF), errors.Is(err, io.ErrUnexpectedEOF):
+		http.Error(w, errBadUpload.Error(), http.StatusBadRequest)
+	default:
+		log.Printf("upload failed: %v", err)
+		http.Error(w, "could not store the upload", http.StatusInternalServerError)
 	}
-	fits := len(buf) <= maxText
-	looksText := utf8.Valid(buf) && !bytes.ContainsRune(buf, 0)
-	if fits && looksText {
-		text := strings.ReplaceAll(string(buf), "\r\n", "\n")
-		if ct != "text/plain" {
-			// Piped command output (echo, wl-paste) ends in a newline nobody meant to send.
-			text = strings.TrimSuffix(text, "\n")
-		}
-		if strings.TrimSpace(text) == "" {
-			return Item{}, errEmpty
-		}
-		return s.store.AddText(text, device)
-	}
-	// Too long, or not text at all: keep it as a file.
-	name := ""
-	if ct == "text/plain" {
-		name = "text-" + time.Now().Format("20060102-150405") + ".txt"
-	}
-	return s.store.AddFile(io.MultiReader(bytes.NewReader(buf), body), name, ct, device)
 }
 
-func (s *server) createMultipart(r *http.Request, device string) ([]Item, error) {
-	mr, err := r.MultipartReader()
-	if err != nil {
-		return nil, errEmpty
-	}
-	var out []Item
-	for {
-		part, err := mr.NextPart()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return out, err
-		}
-		it, err := s.createPart(part, device)
-		if errors.Is(err, errEmpty) {
-			continue
-		}
-		if err != nil {
-			return out, err
-		}
-		out = append(out, it)
-	}
-	if len(out) == 0 {
-		return nil, errEmpty
-	}
-	return out, nil
-}
-
-func (s *server) createPart(part *multipart.Part, device string) (Item, error) {
-	if part.FileName() == "" {
-		return s.createMaybeText(part, "text/plain", device)
-	}
-	return s.store.AddFile(part, part.FileName(), part.Header.Get("Content-Type"), device)
-}
-
+// handleRaw sends an item's encrypted data. Only a device with the key can
+// make anything of it.
 func (s *server) handleRaw(w http.ResponseWriter, r *http.Request) {
 	it, ok := s.store.Get(r.PathValue("id"))
 	if !ok {
 		http.NotFound(w, r)
 		return
 	}
-	// Uploaded content is never allowed to run as a page on this origin.
+	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Security-Policy", "sandbox; default-src 'none'")
 	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
-
-	if it.Kind == "text" {
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		io.WriteString(w, it.Text)
+	if it.Size == 0 {
+		w.Header().Set("Content-Length", "0")
 		return
 	}
 	f, err := os.Open(s.store.Path(it.ID))
@@ -305,15 +280,6 @@ func (s *server) handleRaw(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer f.Close()
-	disposition := "attachment"
-	if it.Kind == "image" && r.URL.Query().Get("dl") == "" {
-		disposition = "inline"
-	}
-	if full := mime.FormatMediaType(disposition, map[string]string{"filename": it.Name}); full != "" {
-		disposition = full
-	}
-	w.Header().Set("Content-Disposition", disposition)
-	w.Header().Set("Content-Type", it.Mime)
 	http.ServeContent(w, r, "", time.UnixMilli(it.Created), f)
 }
 
@@ -417,23 +383,9 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	json.NewEncoder(w).Encode(v)
 }
 
-// deviceName reads the percent-encoded X-Device header clients send so the
-// feed can show where an item came from.
-func deviceName(r *http.Request) string {
-	d := r.Header.Get("X-Device")
-	if u, err := url.PathUnescape(d); err == nil {
-		d = u
-	}
-	d = cleanName(d)
-	if rs := []rune(d); len(rs) > 40 {
-		d = string(rs[:40])
-	}
-	return d
-}
-
 func loadToken(dir, given string) (string, error) {
 	if given = strings.TrimSpace(given); given != "" {
-		// The token is the only thing between the internet and your feed.
+		// The token is what stands between the internet and your hub.
 		if len(given) < minTokenLen {
 			return "", fmt.Errorf("the token needs at least %d characters; leave it empty to have one generated", minTokenLen)
 		}

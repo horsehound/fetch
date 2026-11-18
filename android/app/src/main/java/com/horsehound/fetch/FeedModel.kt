@@ -13,6 +13,7 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.util.LruCache
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.FileProvider
@@ -50,6 +51,10 @@ class FeedModel(private val app: Application) : AndroidViewModel(app) {
     var toastVisible by mutableStateOf(false)
         private set
 
+    /** A pairing link that arrived from outside (a scanned QR code), waiting for a yes. */
+    var pendingPairing by mutableStateOf<Seal.Pairing?>(null)
+        private set
+
     /** Things for the screen to start: the share sheet for an item. */
     val launches = Channel<Intent>(Channel.BUFFERED)
 
@@ -73,29 +78,123 @@ class FeedModel(private val app: Application) : AndroidViewModel(app) {
         }
     }
 
-    // ---- connection ----
+    // ---- pairing ----
 
-    fun apply(new: HubConfig) {
+    private fun apply(new: HubConfig) {
         new.save(app)
         config = new
         items = emptyList()
         problem = null
         thumbnails.evictAll()
+        codes.clear()
         start()
     }
 
-    /** Asks the hub for the feed with [draft]; returns what went wrong, or null if it answered. */
-    suspend fun check(draft: HubConfig): String? {
-        val client = HubClient.from(draft) ?: return HubError.NotSetUp().message
-        return try {
-            client.list()
-            null
+    /** A pairing link from a scanned QR code or another app: ask before using it. */
+    fun received(link: String) {
+        val pairing = Seal.Pairing.parseOrNull(link)
+        when {
+            pairing == null -> flash("That pairing link is incomplete")
+            pairing == config.pairing -> flash("Already paired with this hub")
+            else -> pendingPairing = pairing
+        }
+    }
+
+    fun dismissPairing() {
+        pendingPairing = null
+    }
+
+    /** Shows a problem above the feed. */
+    fun report(message: String) {
+        problem = message
+    }
+
+    /** Joins a hub with a pairing link. Returns what went wrong, or null. */
+    suspend fun pair(pairing: Seal.Pairing): String? {
+        pendingPairing = null
+        val client = HubClient.to(pairing.hub, pairing.token, pairing.key, config.device)
+            ?: return "That pairing link is incomplete."
+        try {
+            val check = client.hubCheck()
+            if (check.isEmpty()) {
+                client.claim() // the hub was reset since the link was made
+            } else if (check != pairing.key.check) {
+                return "This link's key isn't the one the hub uses now. Make a fresh link on a device that works."
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: HubError.WrongToken) {
+            return "The hub doesn't accept this link's token."
+        } catch (e: Exception) {
+            return e.message ?: "Something went wrong."
+        }
+        apply(config.copy(server = pairing.hub, token = pairing.token, key = pairing.key.text))
+        flash("Paired")
+        return null
+    }
+
+    /**
+     * The first device: makes the key for a hub nobody has set up yet. With
+     * [startOver], a hub that already has a key is wiped first. Returns what
+     * went wrong, or null.
+     */
+    suspend fun setUp(server: String, token: String, startOver: Boolean): String? {
+        val hub = Seal.normalizeUrl(server) ?: return "That address doesn't look right."
+        val key = Seal.Key.new()
+        val client = HubClient.to(hub, token, key, config.device) ?: return "That address doesn't look right."
+        try {
+            if (startOver) {
+                client.resetHub()
+            } else if (client.hubCheck().isNotEmpty()) {
+                throw HubError.AlreadySetUp()
+            }
+            client.claim()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            e.message ?: "Something went wrong."
+            return e.message ?: "Something went wrong."
         }
+        apply(config.copy(server = hub, token = token.trim(), key = key.text))
+        return null
     }
+
+    /** Deletes everything on the hub and makes a new key; every other device has to pair again. */
+    suspend fun startOver(): String? {
+        val pairing = config.pairing ?: return HubError.NotSetUp().message
+        return setUp(pairing.hub, pairing.token, startOver = true)
+    }
+
+    fun unpair() {
+        stop()
+        apply(config.copy(server = "", token = "", key = ""))
+    }
+
+    fun rename(device: String) {
+        val name = device.trim().take(HubConfig.MAX_DEVICE_NAME)
+        if (name.isEmpty() || name == config.device) return
+        val next = config.copy(device = name)
+        next.save(app)
+        config = next
+    }
+
+    // ---- code ----
+
+    // Worked out on the phone, off the main thread: the hub never sees the text.
+    private val codes = mutableStateMapOf<String, FetchCode.Result?>()
+
+    /** The language and coloured tokens of a text item that is code; null while unknown or for prose. */
+    fun code(item: Item): FetchCode.Result? {
+        val text = item.text
+        if (!item.isText || text == null) return null
+        if (codes.containsKey(item.id)) return codes[item.id]
+        codes[item.id] = null
+        viewModelScope.launch {
+            codes[item.id] = withContext(Dispatchers.Default) { FetchCode.analyze(text) }
+        }
+        return null
+    }
+
+    // ---- connection ----
 
     /** Loads the feed and keeps it current until [stop]. */
     fun start() {
@@ -103,6 +202,21 @@ class FeedModel(private val app: Application) : AndroidViewModel(app) {
         val client = client ?: return
         liveJob = viewModelScope.launch {
             while (isActive) {
+                // A device elsewhere may have started over with a new key.
+                try {
+                    client.verify()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: HubError) {
+                    if (e is HubError.OtherKey || e is HubError.NoEncryption || e is HubError.WrongToken) {
+                        items = emptyList()
+                        problem = e.message
+                        delay(15_000)
+                        continue
+                    }
+                } catch (e: Exception) {
+                    // Unreachable for now; refresh() below says so.
+                }
                 refresh()
                 try {
                     // "hello" only confirms the connection; the feed was just loaded.
@@ -147,13 +261,15 @@ class FeedModel(private val app: Application) : AndroidViewModel(app) {
 
     // ---- sending ----
 
-    private suspend fun attempt(work: suspend (HubClient) -> Unit) {
+    /** Runs [work] and shows what went wrong, if anything. Sends make sure the key still matches first. */
+    private suspend fun attempt(sending: Boolean = false, work: suspend (HubClient) -> Unit) {
         val client = client
         if (client == null) {
             problem = HubError.NotSetUp().message
             return
         }
         try {
+            if (sending) client.verify()
             work(client)
             problem = null
         } catch (e: CancellationException) {
@@ -166,7 +282,7 @@ class FeedModel(private val app: Application) : AndroidViewModel(app) {
     fun send(text: String) {
         if (text.isBlank()) return
         viewModelScope.launch {
-            attempt { it.sendText(text) }
+            attempt(sending = true) { it.sendText(text) }
             refresh()
         }
     }
@@ -175,7 +291,7 @@ class FeedModel(private val app: Application) : AndroidViewModel(app) {
     fun send(uris: List<Uri>) {
         if (uris.isEmpty()) return
         viewModelScope.launch {
-            for (uri in uris) attempt { Outgoing.send(app, it, uri) }
+            for (uri in uris) attempt(sending = true) { Outgoing.send(app, it, uri) }
             refresh()
         }
     }
@@ -197,10 +313,10 @@ class FeedModel(private val app: Application) : AndroidViewModel(app) {
                 val entry = clip.getItemAt(index)
                 val uri = entry.uri
                 if (uri != null) {
-                    attempt { Outgoing.send(app, it, uri) }
+                    attempt(sending = true) { Outgoing.send(app, it, uri) }
                 } else {
                     val text = entry.coerceToText(app)?.toString().orEmpty()
-                    if (text.isNotBlank()) attempt { it.sendText(text) }
+                    if (text.isNotBlank()) attempt(sending = true) { it.sendText(text) }
                 }
             }
             refresh()

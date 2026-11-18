@@ -1,5 +1,6 @@
 package com.horsehound.fetch
 
+import java.util.Base64
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -7,17 +8,20 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ItemTest {
-    // What the hub answers on GET /api/items; it leaves empty fields out.
-    private val listing = """
-        {"items":[
-          {"id":"0193a1","kind":"text","text":"hello\nthere","size":11,"device":"laptop","created":1763360000000,"pinned":true},
-          {"id":"0193a0","kind":"image","name":"image-20261117-064500.jpg","mime":"image/jpeg","size":2048576,"created":1763350000000,"pinned":false}
-        ]}
-    """.trimIndent()
+    private val key = Seal.Key.new()
+
+    private fun entry(id: String, meta: Seal.Meta, dataSize: Long, pinned: Boolean = false, with: Seal.Key = key): String {
+        val env = Base64.getEncoder().encodeToString(Seal.sealMeta(meta, with).bytes)
+        return """{"id":"$id","meta":"$env","size":${Seal.sealedSize(dataSize).takeIf { meta.kind != "text" } ?: 0},"created":1763360000000,"pinned":$pinned}"""
+    }
 
     @Test
-    fun readsTheFeed() {
-        val items = Item.parseList(listing)
+    fun readsAndDecryptsTheFeed() {
+        val json = """{"items":[
+            ${entry("0193a1", Seal.Meta("text", device = "laptop", text = "hello\nthere"), 0, pinned = true)},
+            ${entry("0193a0", Seal.Meta("image", device = "iPhone", name = "shot.jpg", mime = "image/jpeg", size = 2048576), 2048576)}
+        ]}"""
+        val items = Item.parseList(json, key)
         assertEquals(2, items.size)
 
         val text = items[0]
@@ -27,38 +31,34 @@ class ItemTest {
         assertEquals(1763360000000L, text.created)
         assertTrue(text.pinned)
         assertNull(text.name)
+        assertFalse(text.broken)
 
         val image = items[1]
         assertTrue(image.isImage)
-        assertFalse(image.isText)
-        assertEquals("image-20261117-064500.jpg", image.name)
+        assertEquals("shot.jpg", image.name)
         assertEquals("image/jpeg", image.mime)
         assertEquals(2048576L, image.size)
-        assertNull(image.text)
-        assertNull(image.device)
+        assertEquals(Seal.SALT, image.salt!!.size)
     }
 
     @Test
-    fun readsWhatTheHubSaysAboutCode() {
-        val item = Item.parseList(
-            """{"items":[{"id":"1","kind":"text","text":"git status","size":10,"created":1,"pinned":false,
-               "lang":"bash","lang_label":"Shell","tokens":[["fn","git"],[""," status"]]}]}""",
-        ).single()
-        assertEquals("bash", item.lang)
-        assertEquals("Shell", item.langLabel)
-        assertEquals(listOf("fn" to "git", "" to " status"), item.tokens)
-        // The tokens, joined, are exactly the text.
-        assertEquals(item.text, item.tokens!!.joinToString("") { it.second })
+    fun itemsUnderAnotherKeyAreMarkedNotDropped() {
+        val json = """{"items":[${entry("x", Seal.Meta("text", text = "secret"), 0, with = Seal.Key.new())}]}"""
+        val item = Item.parseList(json, key).single()
+        assertTrue(item.broken)
+        assertFalse(item.isText)
+        assertNull(item.text)
     }
 
     @Test
-    fun plainTextCarriesNoTokens() {
-        assertNull(Item.parseList(listing)[0].tokens)
-        assertNull(Item.parseList(listing)[0].lang)
+    fun plaintextSizesComeBackFromSealedSizes() {
+        for (n in listOf(0L, 1L, 65535L, 65536L, 65537L, 131072L, 10_000_000L)) {
+            assertEquals(n, Item.plainSize(Seal.sealedSize(n)))
+        }
     }
 
     @Test
     fun anEmptyFeedIsEmpty() {
-        assertTrue(Item.parseList("""{"items":[]}""").isEmpty())
+        assertTrue(Item.parseList("""{"items":[]}""", key).isEmpty())
     }
 }

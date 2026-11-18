@@ -34,6 +34,19 @@ struct FeedView: View {
                 Task { await model.clearUnpinned() }
             }
         }
+        .alert("Pair with this hub?", isPresented: Binding(
+            get: { model.pendingPairing != nil },
+            set: { if !$0 { model.pendingPairing = nil } }
+        ), presenting: model.pendingPairing) { pairing in
+            Button("Pair") {
+                Task {
+                    if let problem = await model.pair(pairing) { model.toast = problem }
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { pairing in
+            Text("Everything you send will go to \(pairing.hub), and this iPhone will use the key \(pairing.key.fingerprint). Only accept links from your own devices.")
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { model.start() } else if phase == .background { model.stop() }
         }
@@ -52,9 +65,9 @@ struct FeedView: View {
     @ViewBuilder private var feed: some View {
         if model.client == nil {
             ContentUnavailableView {
-                Label("Connect to your hub", systemImage: "antenna.radiowaves.left.and.right")
+                Label("Pair with your hub", systemImage: "lock.shield")
             } description: {
-                Text("Enter the address and token your Fetch hub printed when it started.")
+                Text("On a device that's set up, open Add a device and scan its QR code with the Camera app. Or open Settings to paste a link or set up a new hub.")
             } actions: {
                 Button("Open Settings") { showSettings = true }
                     .buttonStyle(.bordered)

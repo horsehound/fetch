@@ -29,6 +29,7 @@ import androidx.compose.material.icons.outlined.BrokenImage
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.CircularProgressIndicator
@@ -78,8 +79,8 @@ fun ItemRow(model: FeedModel, item: Item, now: Long) {
     val shape = RoundedCornerShape(12.dp)
     var expanded by rememberSaveable(item.id) { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
-    // Only text the hub recognised as code comes with tokens.
-    val code = item.tokens?.takeIf { item.isText && it.isNotEmpty() }
+    // Worked out on this phone: the hub can't read the text.
+    val code = model.code(item)?.takeIf { it.tokens.isNotEmpty() }
 
     Box {
         Column(
@@ -90,6 +91,7 @@ fun ItemRow(model: FeedModel, item: Item, now: Long) {
                 .border(1.dp, if (item.pinned) Theme.lime else Theme.line, shape)
                 .combinedClickable(
                     onClickLabel = when {
+                        item.broken -> "More"
                         code != null -> "Copy this code"
                         item.isText -> "Copy this text"
                         item.isImage -> "Copy this picture"
@@ -100,11 +102,18 @@ fun ItemRow(model: FeedModel, item: Item, now: Long) {
                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                         menu = true
                     },
-                    onClick = { if (item.isText || item.isImage) model.copy(item) else model.share(item) },
+                    onClick = {
+                        when {
+                            item.broken -> menu = true
+                            item.isText || item.isImage -> model.copy(item)
+                            else -> model.share(item)
+                        }
+                    },
                 ),
         ) {
             when {
-                code != null -> CodeBlock(item, code, expanded)
+                item.broken -> Locked()
+                code != null -> CodeBlock(code.label, code.tokens, expanded)
                 item.isText -> Text(
                     item.text.orEmpty(),
                     maxLines = if (expanded) Int.MAX_VALUE else 8,
@@ -119,13 +128,15 @@ fun ItemRow(model: FeedModel, item: Item, now: Long) {
 
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
             val close = { menu = false }
-            MenuEntry("Copy", Icons.Outlined.ContentCopy, close) { model.copy(item) }
-            if (!item.isText) {
-                val label = if (item.isImage) "Save to Photos" else "Save to Downloads"
-                MenuEntry(label, Icons.Outlined.Download, close) { model.save(item) }
+            if (!item.broken) {
+                MenuEntry("Copy", Icons.Outlined.ContentCopy, close) { model.copy(item) }
+                if (!item.isText) {
+                    val label = if (item.isImage) "Save to Photos" else "Save to Downloads"
+                    MenuEntry(label, Icons.Outlined.Download, close) { model.save(item) }
+                }
+                MenuEntry("Share", Icons.Outlined.Share, close) { model.share(item) }
+                MenuEntry(if (item.pinned) "Unpin" else "Pin", Icons.Outlined.PushPin, close) { model.togglePin(item) }
             }
-            MenuEntry("Share", Icons.Outlined.Share, close) { model.share(item) }
-            MenuEntry(if (item.pinned) "Unpin" else "Pin", Icons.Outlined.PushPin, close) { model.togglePin(item) }
             MenuEntry("Delete", Icons.Outlined.Delete, close) { model.delete(item) }
         }
     }
@@ -172,10 +183,28 @@ private fun FileSummary(item: Item) {
     }
 }
 
+/** Something this phone can't open: sent with another key, or changed on the way. */
+@Composable
+private fun Locked() {
+    val scheme = MaterialTheme.colorScheme
+    Row(
+        Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Outlined.Lock, contentDescription = null, tint = scheme.onSurfaceVariant, modifier = Modifier.size(24.dp))
+        Text(
+            "Locked with a different key. Only the device that sent it can read it.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = scheme.onSurfaceVariant,
+        )
+    }
+}
+
 /** Darker inset, monospace, language chip: unmistakably not plain text. */
 @Composable
-private fun CodeBlock(item: Item, tokens: List<Pair<String, String>>, expanded: Boolean) {
-    // The hub's highlight classes applied as colours; diff lines also get a tinted background.
+private fun CodeBlock(label: String, tokens: List<Pair<String, String>>, expanded: Boolean) {
+    // The highlight classes applied as colours; diff lines also get a tinted background.
     val code = remember(tokens) {
         buildAnnotatedString {
             for ((kind, text) in tokens) {
@@ -193,7 +222,7 @@ private fun CodeBlock(item: Item, tokens: List<Pair<String, String>>, expanded: 
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(
-            (item.langLabel ?: item.lang ?: "Code").uppercase(),
+            label.uppercase(),
             fontSize = 10.sp,
             fontWeight = FontWeight.SemiBold,
             fontFamily = FontFamily.Monospace,
@@ -276,7 +305,9 @@ private fun Footer(model: FeedModel, item: Item, now: Long, expanded: Boolean, o
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
-        if (item.isText) {
+        if (item.broken) {
+            // Nothing to do with it but delete it, from the menu.
+        } else if (item.isText) {
             if (isLong(item)) {
                 if (expanded) {
                     Action(Icons.Filled.ExpandLess, "Show less", onExpand)
@@ -319,7 +350,7 @@ private fun Action(icon: ImageVector, label: String, onClick: () -> Unit) {
 
 /** Where the item came from and how long ago. */
 private fun caption(item: Item, now: Long): String {
-    val from = item.device ?: "unknown"
+    val from = item.device ?: if (item.broken) "another key" else "unknown"
     val elapsed = now - item.created
     val since = if (elapsed < DateUtils.MINUTE_IN_MILLIS) {
         "now"

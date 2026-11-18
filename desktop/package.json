@@ -71,7 +71,17 @@
         "nss",
         "alsa-lib"
       ]
-    }
+    },
+    "extraResources": [
+      {
+        "from": "../hub/web",
+        "to": "web",
+        "filter": [
+          "*.html",
+          "*.js"
+        ]
+      }
+    ]
   },
   "homepage": "https://github.com/horsehound/fetch",
   "repository": {

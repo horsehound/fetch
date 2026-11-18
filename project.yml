@@ -16,6 +16,9 @@ targets:
     sources:
       - Sources
       - Shared
+      # Code detection runs on the phone, with the same script as the web page.
+      - path: hub/web/fetch-code.js
+        buildPhase: resources
     dependencies:
       - target: FetchShare
     info:
@@ -32,6 +35,11 @@ targets:
           NSAllowsArbitraryLoads: true
         NSLocalNetworkUsageDescription: Fetch talks to your hub on your home network.
         NSPhotoLibraryAddUsageDescription: Fetch saves pictures from your other devices to your photo library.
+        # Pairing links, from the Camera app scanning a QR code.
+        CFBundleURLTypes:
+          - CFBundleURLName: com.horsehound.fetch.pair
+            CFBundleURLSchemes:
+              - fetchpair
     entitlements:
       path: Fetch.entitlements
       properties:
@@ -73,8 +81,28 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.horsehound.fetch.share
+  FetchTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - Tests
+      - Shared
+      - Sources/CodeHighlighter.swift
+      - path: hub/web/fetch-code.js
+        buildPhase: resources
+      - path: spec/vectors.json
+        buildPhase: resources
+      - path: spec/code-corpus.json
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.horsehound.fetch.tests
+        GENERATE_INFOPLIST_FILE: YES
 schemes:
   Fetch:
     build:
       targets:
         Fetch: all
+    test:
+      targets:
+        - FetchTests

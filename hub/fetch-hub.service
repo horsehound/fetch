@@ -1,7 +1,7 @@
-# /etc/systemd/system/fetch-hub.service
+# /etc/systemd/system/fetch-hub.service, set up by hub/install.sh. By hand:
 #   install -m 755 fetch-linux-amd64 /usr/local/bin/fetch
 #   systemctl daemon-reload && systemctl enable --now fetch-hub
-#   journalctl -u fetch-hub | grep token     # the token to enter on each device
+#   journalctl -u fetch-hub | grep token     # for setting up the first device
 [Unit]
 Description=Fetch hub
 After=network-online.target

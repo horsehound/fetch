@@ -21,14 +21,21 @@ struct ItemRow: View {
     // MARK: content
 
     @ViewBuilder private var content: some View {
-        if item.isText, let code {
+        if item.broken {
+            Label("Can't decrypt this item: it was sent with a different key.", systemImage: "lock.slash")
+                .font(.subheadline)
+                .foregroundStyle(Theme.muted)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 14)
+                .padding(.top, 12)
+        } else if item.isText, let code {
             Button {
                 Task { await model.copy(item) }
             } label: {
                 codeBlock(code)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("\(item.langLabel ?? "Code"): \(item.text ?? "")")
+            .accessibilityLabel("\(analysis?.label ?? "Code"): \(item.text ?? "")")
             .accessibilityHint("Copies this code")
         } else if item.isText {
             Button {
@@ -93,7 +100,9 @@ struct ItemRow: View {
                 .foregroundStyle(Theme.muted)
                 .lineLimit(1)
             Spacer(minLength: 8)
-            if item.isText {
+            if item.broken {
+                icon("trash", "Delete") { Task { await model.delete(item) } }
+            } else if item.isText {
                 if isLong {
                     icon(expanded ? "chevron.up" : "chevron.down", expanded ? "Show less" : "Show all") {
                         expanded.toggle()
@@ -131,6 +140,13 @@ struct ItemRow: View {
     }
 
     @ViewBuilder private var menu: some View {
+        if !item.broken {
+            actions
+        }
+        Button("Delete", systemImage: "trash", role: .destructive) { Task { await model.delete(item) } }
+    }
+
+    @ViewBuilder private var actions: some View {
         Button("Copy", systemImage: "doc.on.doc") { Task { await model.copy(item) } }
         if item.isImage {
             Button("Save to Photos", systemImage: "square.and.arrow.down") { Task { await model.saveToPhotos(item) } }
@@ -139,15 +155,16 @@ struct ItemRow: View {
         Button(item.pinned ? "Unpin" : "Pin", systemImage: item.pinned ? "pin.slash" : "pin") {
             Task { await model.togglePin(item) }
         }
-        Button("Delete", systemImage: "trash", role: .destructive) { Task { await model.delete(item) } }
     }
 
     // MARK: code
 
-    /// The item's text with the hub's highlight classes applied as colours,
-    /// or nil when the hub did not recognise it as code.
+    /// The item's text with its highlight classes applied as colours,
+    /// or nil when it isn't code. Worked out on this device.
+    private var analysis: CodeHighlighter.Result? { model.code(for: item) }
+
     private var code: AttributedString? {
-        guard let tokens = item.tokens, !tokens.isEmpty else { return nil }
+        guard let tokens = analysis?.tokens, !tokens.isEmpty else { return nil }
         var out = AttributedString()
         for token in tokens where token.count == 2 {
             var part = AttributedString(token[1])
@@ -162,7 +179,7 @@ struct ItemRow: View {
     /// Darker inset, monospace, language chip: unmistakably not plain text.
     private func codeBlock(_ code: AttributedString) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text((item.langLabel ?? item.lang ?? "Code").uppercased())
+            Text((analysis?.label ?? "Code").uppercased())
                 .font(.system(size: 10, weight: .semibold, design: .monospaced))
                 .foregroundStyle(.white)
                 .padding(.horizontal, 7)

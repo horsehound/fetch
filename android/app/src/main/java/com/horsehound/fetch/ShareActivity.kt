@@ -107,6 +107,8 @@ class ShareActivity : ComponentActivity() {
     }
 
     private suspend fun sendAll(client: HubClient): Int {
+        // Never send under a key the other devices no longer have.
+        client.verify()
         val streams = sharedStreams()
         if (streams.isEmpty()) {
             // A link or a piece of text: browsers share the page address this way.
@@ -164,51 +166,63 @@ class ShareActivity : ComponentActivity() {
     }
 
     /**
-     * Normally the hub details come from the Fetch app. If something is shared
-     * before the app was ever set up, ask once here.
+     * Normally the pairing happens in the Fetch app. If something is shared
+     * before the phone was ever paired, take a pairing link here.
      */
     @Composable
     private fun HubForm() {
-        var server by rememberSaveable { mutableStateOf("") }
-        var token by rememberSaveable { mutableStateOf("") }
+        var link by rememberSaveable { mutableStateOf("") }
 
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Connect to your hub", style = MaterialTheme.typography.titleMedium)
+            Text("Pair with your hub", style = MaterialTheme.typography.titleMedium)
             Text(
-                "Enter the address and token your Fetch hub printed when it started.",
+                "Paste a pairing link from a device that is already set up (Settings, Add a device). " +
+                    "Or open Fetch to scan its QR code.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             OutlinedTextField(
-                value = server,
-                onValueChange = { server = it },
-                placeholder = { Text("192.168.1.20:8787") },
+                value = link,
+                onValueChange = { link = it },
+                placeholder = { Text("fetchpair://v1?…") },
                 singleLine = true,
-                keyboardOptions = plainKeyboard(KeyboardType.Uri, ImeAction.Next),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            OutlinedTextField(
-                value = token,
-                onValueChange = { token = it },
-                placeholder = { Text("Token") },
-                singleLine = true,
-                keyboardOptions = plainKeyboard(KeyboardType.Ascii, ImeAction.Done),
+                keyboardOptions = plainKeyboard(KeyboardType.Uri, ImeAction.Done),
                 modifier = Modifier.fillMaxWidth(),
             )
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 TextButton(onClick = { finish() }) { Text("Cancel") }
-                TextButton(onClick = {
-                    val config = HubConfig.load(this@ShareActivity).copy(server = server, token = token)
-                    if (config.isComplete) {
-                        config.save(this@ShareActivity)
-                        begin()
-                    } else {
-                        fail("That address or token doesn't look right.")
-                    }
-                }) {
-                    Text("Send")
-                }
+                TextButton(onClick = { pair(link) }) { Text("Send") }
             }
+        }
+    }
+
+    private fun pair(link: String) {
+        val pairing = Seal.Pairing.parseOrNull(link)
+        if (pairing == null) {
+            fail("That isn't a complete pairing link.")
+            return
+        }
+        phase = Phase.Sending
+        message = "Pairing"
+        lifecycleScope.launch {
+            val config = HubConfig.load(this@ShareActivity)
+            val client = HubClient.to(pairing.hub, pairing.token, pairing.key, config.device)
+            try {
+                val check = client!!.hubCheck()
+                if (check.isEmpty()) {
+                    client.claim()
+                } else if (check != pairing.key.check) {
+                    fail("This link's key isn't the one the hub uses now. Make a fresh link.")
+                    return@launch
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                fail(e.message ?: "Something went wrong.")
+                return@launch
+            }
+            config.copy(server = pairing.hub, token = pairing.token, key = pairing.key.text).save(this@ShareActivity)
+            begin()
         }
     }
 }
