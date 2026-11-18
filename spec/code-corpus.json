@@ -4314,11 +4314,11 @@
   "#",
   "-",
   "--",
-  "key: value",
-  "name = \"x\"",
-  "a b",
-  "FROM x RUN y",
-  "﻿sudo ls -la",
+  "key:\u00a0value",
+  "name\u00a0=\u00a0\"x\"",
+  "a\u2028b",
+  "FROM x\u2028RUN y",
+  "\ufeffsudo ls -la",
   "line\r\nline\r"
  ],
  "fuzz": [
@@ -4341,12 +4341,12 @@
    ]
   },
   {
-   "text": "Meeting moved to 3pm, room 4. Bring the laptop.",
+   "text": "Meeting\u00a0moved\u00a0to\u00a03pm,\u00a0room\u00a04.\u00a0Bring\u00a0the\u00a0laptop.",
    "lang": "",
    "code": [
     [
      "",
-     "Meeting moved to 3pm, room 4. Bring the laptop."
+     "Meeting\u00a0moved\u00a0to\u00a03pm,\u00a0room\u00a04.\u00a0Bring\u00a0the\u00a0laptop."
     ]
    ]
   },
@@ -4361,7 +4361,7 @@
    ]
   },
   {
-   "text": "+49 151 2345678",
+   "text": "+49\u00a0151\u00a02345678",
    "lang": "",
    "code": [
     [
@@ -4374,7 +4374,7 @@
     ],
     [
      "",
-     " 151 2345678"
+     "\u00a0151\u00a02345678"
     ]
    ]
   },
@@ -4405,12 +4405,12 @@
    ]
   },
   {
-   "text": "make sure you call me back",
+   "text": "make\u00a0sure\u00a0you\u00a0call\u00a0me\u00a0back",
    "lang": "",
    "code": [
     [
      "",
-     "make sure you call me back"
+     "make\u00a0sure\u00a0you\u00a0call\u00a0me\u00a0back"
     ]
    ]
   },
@@ -4445,12 +4445,12 @@
    ]
   },
   {
-   "text": "time to go",
+   "text": "time\u00a0to\u00a0go",
    "lang": "",
    "code": [
     [
      "",
-     "time to go"
+     "time\u00a0to\u00a0go"
     ]
    ]
   },
@@ -4493,22 +4493,22 @@
    ]
   },
   {
-   "text": "python is easier than rust",
+   "text": "python\u00a0is\u00a0easier\u00a0than\u00a0rust",
    "lang": "",
    "code": [
     [
      "",
-     "python is easier than rust"
+     "python\u00a0is\u00a0easier\u00a0than\u00a0rust"
     ]
    ]
   },
   {
-   "text": "Name: John\nPhone: 555-1234\nEmail: john@example.com",
+   "text": "Name:\u00a0John\nPhone:\u00a0555-1234\nEmail:\u00a0john@example.com",
    "lang": "",
    "code": [
     [
      "",
-     "Name: John\nPhone: 555-"
+     "Name:\u00a0John\nPhone:\u00a0555-"
     ],
     [
      "num",
@@ -4516,32 +4516,32 @@
     ],
     [
      "",
-     "\nEmail: john@example.com"
+     "\nEmail:\u00a0john@example.com"
     ]
    ]
   },
   {
-   "text": "- milk\n- eggs\n- bread\n- coffee",
+   "text": "-\u00a0milk\n-\u00a0eggs\n-\u00a0bread\n-\u00a0coffee",
    "lang": "",
    "code": [
     [
      "",
-     "- milk\n- eggs\n- bread\n- coffee"
+     "-\u00a0milk\n-\u00a0eggs\n-\u00a0bread\n-\u00a0coffee"
     ]
    ]
   },
   {
-   "text": "Shopping list:\n  milk\n  eggs",
+   "text": "Shopping\u00a0list:\n\u00a0\u00a0milk\n\u00a0\u00a0eggs",
    "lang": "",
    "code": [
     [
      "",
-     "Shopping list:\n  milk\n  eggs"
+     "Shopping\u00a0list:\n\u00a0\u00a0milk\n\u00a0\u00a0eggs"
     ]
    ]
   },
   {
-   "text": "1. unpack the printer\n2. level the bed\n3. print a test cube",
+   "text": "1.\u00a0unpack\u00a0the\u00a0printer\n2.\u00a0level\u00a0the\u00a0bed\n3.\u00a0print\u00a0a\u00a0test\u00a0cube",
    "lang": "",
    "code": [
     [
@@ -4550,7 +4550,7 @@
     ],
     [
      "",
-     ". unpack the printer\n"
+     ".\u00a0unpack\u00a0the\u00a0printer\n"
     ],
     [
      "num",
@@ -4558,7 +4558,7 @@
     ],
     [
      "",
-     ". level the bed\n"
+     ".\u00a0level\u00a0the\u00a0bed\n"
     ],
     [
      "num",
@@ -4566,7 +4566,7 @@
     ],
     [
      "",
-     ". print a test cube"
+     ".\u00a0print\u00a0a\u00a0test\u00a0cube"
     ]
    ]
   },
@@ -4631,12 +4631,12 @@
    ]
   },
   {
-   "text": "price = 12.50 EUR, shipping = 4.90",
+   "text": "price\u00a0=\u00a012.50\u00a0EUR,\u00a0shipping\u00a0=\u00a04.90",
    "lang": "",
    "code": [
     [
      "",
-     "price = 12."
+     "price\u00a0=\u00a012."
     ],
     [
      "num",
@@ -4644,7 +4644,7 @@
     ],
     [
      "",
-     " EUR, shipping = 4."
+     "\u00a0EUR,\u00a0shipping\u00a0=\u00a04."
     ],
     [
      "num",
@@ -4653,22 +4653,22 @@
    ]
   },
   {
-   "text": "Wi-Fi: HomeNet\nPassword: correct horse battery staple",
+   "text": "Wi-Fi:\u00a0HomeNet\nPassword:\u00a0correct\u00a0horse\u00a0battery\u00a0staple",
    "lang": "",
    "code": [
     [
      "",
-     "Wi-Fi: HomeNet\nPassword: correct horse battery staple"
+     "Wi-Fi:\u00a0HomeNet\nPassword:\u00a0correct\u00a0horse\u00a0battery\u00a0staple"
     ]
    ]
   },
   {
-   "text": "TODO:\nfix the login bug\nwrite the README\nship it",
+   "text": "TODO:\nfix\u00a0the\u00a0login\u00a0bug\nwrite\u00a0the\u00a0README\nship\u00a0it",
    "lang": "",
    "code": [
     [
      "",
-     "TODO:\nfix the login bug\nwrite the README\nship it"
+     "TODO:\nfix\u00a0the\u00a0login\u00a0bug\nwrite\u00a0the\u00a0README\nship\u00a0it"
     ]
    ]
   },
@@ -4723,7 +4723,7 @@
    ]
   },
   {
-   "text": "<3 thanks!!",
+   "text": "<3\u00a0thanks!!",
    "lang": "",
    "code": [
     [
@@ -4736,7 +4736,7 @@
     ],
     [
      "",
-     " thanks!!"
+     "\u00a0thanks!!"
     ]
    ]
   },
@@ -4779,18 +4779,18 @@
    ]
   },
   {
-   "text": "sudo pacman -Syu",
+   "text": "sudo\u00a0pacman\u00a0-Syu",
    "lang": "bash",
    "tokens": [
     [
      "fn",
-     "sudo pacman -Syu"
+     "sudo\u00a0pacman\u00a0-Syu"
     ]
    ],
    "code": [
     [
      "",
-     "sudo pacman -Syu"
+     "sudo\u00a0pacman\u00a0-Syu"
     ]
    ]
   },
@@ -4853,12 +4853,12 @@
    ]
   },
   {
-   "text": "curl -fsSL https://example.com/install.sh | sh",
+   "text": "curl\u00a0-fsSL\u00a0https://example.com/install.sh\u00a0|\u00a0sh",
    "lang": "bash",
    "tokens": [
     [
      "fn",
-     "curl -fsSL https://example.com/install.sh "
+     "curl\u00a0-fsSL\u00a0https://example.com/install.sh\u00a0"
     ],
     [
      "",
@@ -4866,23 +4866,23 @@
     ],
     [
      "fn",
-     " sh"
+     "\u00a0sh"
     ]
    ],
    "code": [
     [
      "",
-     "curl -fsSL https://example.com/install.sh | sh"
+     "curl\u00a0-fsSL\u00a0https://example.com/install.sh\u00a0|\u00a0sh"
     ]
    ]
   },
   {
-   "text": "$ npm install\n$ npm run build",
+   "text": "$\u00a0npm\u00a0install\n$\u00a0npm\u00a0run\u00a0build",
    "lang": "",
    "code": [
     [
      "",
-     "$ npm install\n$ npm run build"
+     "$\u00a0npm\u00a0install\n$\u00a0npm\u00a0run\u00a0build"
     ]
    ]
   },
@@ -4953,18 +4953,18 @@
    ]
   },
   {
-   "text": "pct enter 104",
+   "text": "pct\u00a0enter\u00a0104",
    "lang": "bash",
    "tokens": [
     [
      "fn",
-     "pct enter 104"
+     "pct\u00a0enter\u00a0104"
     ]
    ],
    "code": [
     [
      "",
-     "pct enter 104"
+     "pct\u00a0enter\u00a0104"
     ]
    ]
   },
@@ -5229,7 +5229,7 @@
    ]
   },
   {
-   "text": "FETCH_DOMAIN=fetch.example.com docker compose -f docker-compose.vps.yml up -d",
+   "text": "FETCH_DOMAIN=fetch.example.com\u00a0docker\u00a0compose\u00a0-f\u00a0docker-compose.vps.yml\u00a0up\u00a0-d",
    "lang": "bash",
    "tokens": [
     [
@@ -5238,18 +5238,18 @@
     ],
     [
      "",
-     "=fetch.example.com docker compose -f docker-compose.vps.yml up -d"
+     "=fetch.example.com\u00a0docker\u00a0compose\u00a0-f\u00a0docker-compose.vps.yml\u00a0up\u00a0-d"
     ]
    ],
    "code": [
     [
      "",
-     "FETCH_DOMAIN=fetch.example.com docker compose -f docker-compose.vps.yml up -d"
+     "FETCH_DOMAIN=fetch.example.com\u00a0docker\u00a0compose\u00a0-f\u00a0docker-compose.vps.yml\u00a0up\u00a0-d"
     ]
    ]
   },
   {
-   "text": "```bash\nmake install\n```",
+   "text": "```bash\nmake\u00a0install\n```",
    "lang": "bash",
    "tokens": [
     [
@@ -5258,7 +5258,7 @@
     ],
     [
      "fn",
-     "make install"
+     "make\u00a0install"
     ],
     [
      "meta",
@@ -5272,7 +5272,7 @@
     ],
     [
      "",
-     "make install"
+     "make\u00a0install"
     ],
     [
      "meta",
@@ -5281,12 +5281,12 @@
    ]
   },
   {
-   "text": "def greet(name):\n    print(f\"hello {name}\")\n\ngreet(\"world\")",
+   "text": "def\u00a0greet(name):\n\u00a0\u00a0\u00a0\u00a0print(f\"hello\u00a0{name}\")\n\ngreet(\"world\")",
    "lang": "python",
    "tokens": [
     [
      "fn",
-     "def greet"
+     "def\u00a0greet"
     ],
     [
      "",
@@ -5294,7 +5294,7 @@
     ],
     [
      "fn",
-     "    print"
+     "\u00a0\u00a0\u00a0\u00a0print"
     ],
     [
      "",
@@ -5302,7 +5302,7 @@
     ],
     [
      "str",
-     "\"hello {name}\""
+     "\"hello\u00a0{name}\""
     ],
     [
      "",
@@ -5328,7 +5328,7 @@
    "code": [
     [
      "fn",
-     "def greet"
+     "def\u00a0greet"
     ],
     [
      "",
@@ -5336,7 +5336,7 @@
     ],
     [
      "fn",
-     "    print"
+     "\u00a0\u00a0\u00a0\u00a0print"
     ],
     [
      "",
@@ -5344,7 +5344,7 @@
     ],
     [
      "str",
-     "\"hello {name}\""
+     "\"hello\u00a0{name}\""
     ],
     [
      "",
@@ -5369,12 +5369,12 @@
    ]
   },
   {
-   "text": "import os\nimport sys\n\nfor path in sys.argv[1:]:\n    print(os.path.getsize(path))",
+   "text": "import\u00a0os\nimport\u00a0sys\n\nfor\u00a0path\u00a0in\u00a0sys.argv[1:]:\n\u00a0\u00a0\u00a0\u00a0print(os.path.getsize(path))",
    "lang": "python",
    "tokens": [
     [
      "",
-     "import os\nimport sys\n\nfor path in sys.argv["
+     "import\u00a0os\nimport\u00a0sys\n\nfor\u00a0path\u00a0in\u00a0sys.argv["
     ],
     [
      "num",
@@ -5386,7 +5386,7 @@
     ],
     [
      "fn",
-     "    print"
+     "\u00a0\u00a0\u00a0\u00a0print"
     ],
     [
      "",
@@ -5404,7 +5404,7 @@
    "code": [
     [
      "",
-     "import os\nimport sys\n\nfor path in sys.argv["
+     "import\u00a0os\nimport\u00a0sys\n\nfor\u00a0path\u00a0in\u00a0sys.argv["
     ],
     [
      "num",
@@ -5416,7 +5416,7 @@
     ],
     [
      "fn",
-     "    print"
+     "\u00a0\u00a0\u00a0\u00a0print"
     ],
     [
      "",
@@ -5433,12 +5433,12 @@
    ]
   },
   {
-   "text": "from PIL import Image\nim = Image.open('a.png')\nim.save('b.jpg')",
+   "text": "from\u00a0PIL\u00a0import\u00a0Image\nim\u00a0=\u00a0Image.open('a.png')\nim.save('b.jpg')",
    "lang": "",
    "code": [
     [
      "",
-     "from PIL import Image\nim = Image."
+     "from\u00a0PIL\u00a0import\u00a0Image\nim\u00a0=\u00a0Image."
     ],
     [
      "fn",
@@ -5475,16 +5475,16 @@
    ]
   },
   {
-   "text": "const items = await fetch('/api/items').then((r) => r.json());\nconsole.log(items.length);",
+   "text": "const\u00a0items\u00a0=\u00a0await\u00a0fetch('/api/items').then((r)\u00a0=>\u00a0r.json());\nconsole.log(items.length);",
    "lang": "",
    "code": [
     [
      "",
-     "const items ="
+     "const\u00a0items\u00a0="
     ],
     [
      "fn",
-     " await fetch"
+     "\u00a0await\u00a0fetch"
     ],
     [
      "",
@@ -5504,7 +5504,7 @@
     ],
     [
      "",
-     "((r) => r."
+     "((r)\u00a0=>\u00a0r."
     ],
     [
      "fn",
@@ -5525,26 +5525,26 @@
    ]
   },
   {
-   "text": "function add(a, b) {\n  return a + b;\n}",
+   "text": "function\u00a0add(a,\u00a0b)\u00a0{\n\u00a0\u00a0return\u00a0a\u00a0+\u00a0b;\n}",
    "lang": "code",
    "tokens": [
     [
      "fn",
-     "function add"
+     "function\u00a0add"
     ],
     [
      "",
-     "(a, b) {\n  return a + b;\n}"
+     "(a,\u00a0b)\u00a0{\n\u00a0\u00a0return\u00a0a\u00a0+\u00a0b;\n}"
     ]
    ],
    "code": [
     [
      "fn",
-     "function add"
+     "function\u00a0add"
     ],
     [
      "",
-     "(a, b) {\n  return a + b;\n}"
+     "(a,\u00a0b)\u00a0{\n\u00a0\u00a0return\u00a0a\u00a0+\u00a0b;\n}"
     ]
    ]
   },
@@ -6915,17 +6915,17 @@
    ]
   },
   {
-   "text": "select * from orders where total > 100",
+   "text": "select\u00a0*\u00a0from\u00a0orders\u00a0where\u00a0total\u00a0>\u00a0100",
    "lang": "",
    "code": [
     [
      "",
-     "select * from orders where total > 100"
+     "select\u00a0*\u00a0from\u00a0orders\u00a0where\u00a0total\u00a0>\u00a0100"
     ]
    ]
   },
   {
-   "text": "<div class=\"card\">\n  <p>Hello</p>\n</div>",
+   "text": "<div\u00a0class=\"card\">\n\u00a0\u00a0<p>Hello</p>\n</div>",
    "lang": "html",
    "tokens": [
     [
@@ -6934,7 +6934,7 @@
     ],
     [
      "key",
-     "div class"
+     "div\u00a0class"
     ],
     [
      "",
@@ -6946,7 +6946,7 @@
     ],
     [
      "",
-     ">\n  <"
+     ">\n\u00a0\u00a0<"
     ],
     [
      "key",
@@ -6976,7 +6976,7 @@
    "code": [
     [
      "",
-     "<div class="
+     "<div\u00a0class="
     ],
     [
      "str",
@@ -6984,12 +6984,12 @@
     ],
     [
      "",
-     ">\n  <p>Hello</p>\n</div>"
+     ">\n\u00a0\u00a0<p>Hello</p>\n</div>"
     ]
    ]
   },
   {
-   "text": "<!DOCTYPE html>\n<html>\n<head><title>x</title></head>\n</html>",
+   "text": "<!DOCTYPE\u00a0html>\n<html>\n<head><title>x</title></head>\n</html>",
    "lang": "html",
    "tokens": [
     [
@@ -6998,7 +6998,7 @@
     ],
     [
      "key",
-     "DOCTYPE html"
+     "DOCTYPE\u00a0html"
     ],
     [
      "",
@@ -7056,12 +7056,12 @@
    "code": [
     [
      "",
-     "<!DOCTYPE html>\n<html>\n<head><title>x</title></head>\n</html>"
+     "<!DOCTYPE\u00a0html>\n<html>\n<head><title>x</title></head>\n</html>"
     ]
    ]
   },
   {
-   "text": "{% if product.available %}\n  <span class=\"price\">{{ product.price | money }}</span>\n{% endif %}",
+   "text": "{%\u00a0if\u00a0product.available\u00a0%}\n\u00a0\u00a0<span\u00a0class=\"price\">{{\u00a0product.price\u00a0|\u00a0money\u00a0}}</span>\n{%\u00a0endif\u00a0%}",
    "lang": "html",
    "tokens": [
     [
@@ -7070,7 +7070,7 @@
     ],
     [
      "",
-     " if product.available "
+     "\u00a0if\u00a0product.available\u00a0"
     ],
     [
      "meta",
@@ -7078,11 +7078,11 @@
     ],
     [
      "",
-     "\n  <"
+     "\n\u00a0\u00a0<"
     ],
     [
      "key",
-     "span class"
+     "span\u00a0class"
     ],
     [
      "",
@@ -7102,7 +7102,7 @@
     ],
     [
      "",
-     " product.price | money "
+     "\u00a0product.price\u00a0|\u00a0money\u00a0"
     ],
     [
      "meta",
@@ -7126,7 +7126,7 @@
     ],
     [
      "",
-     " endif "
+     "\u00a0endif\u00a0"
     ],
     [
      "meta",
@@ -7136,7 +7136,7 @@
    "code": [
     [
      "",
-     "{% if product.available %}\n  <span class="
+     "{%\u00a0if\u00a0product.available\u00a0%}\n\u00a0\u00a0<span\u00a0class="
     ],
     [
      "str",
@@ -7144,33 +7144,33 @@
     ],
     [
      "",
-     ">{{ product.price | money }}</span>\n{% endif %}"
+     ">{{\u00a0product.price\u00a0|\u00a0money\u00a0}}</span>\n{%\u00a0endif\u00a0%}"
     ]
    ]
   },
   {
-   "text": ".card {\n  border-radius: 12px;\n  padding: 12px 14px;\n}",
+   "text": ".card\u00a0{\n\u00a0\u00a0border-radius:\u00a012px;\n\u00a0\u00a0padding:\u00a012px\u00a014px;\n}",
    "lang": "code",
    "tokens": [
     [
      "",
-     ".card {\n  border-radius: 12px;\n  padding: 12px 14px;\n}"
+     ".card\u00a0{\n\u00a0\u00a0border-radius:\u00a012px;\n\u00a0\u00a0padding:\u00a012px\u00a014px;\n}"
     ]
    ],
    "code": [
     [
      "",
-     ".card {\n  border-radius: 12px;\n  padding: 12px 14px;\n}"
+     ".card\u00a0{\n\u00a0\u00a0border-radius:\u00a012px;\n\u00a0\u00a0padding:\u00a012px\u00a014px;\n}"
     ]
    ]
   },
   {
-   "text": ":root {\n  --bg: #111;\n}\n@media (prefers-color-scheme: dark) {\n  body { color: white; }\n}",
+   "text": ":root\u00a0{\n\u00a0\u00a0--bg:\u00a0#111;\n}\n@media\u00a0(prefers-color-scheme:\u00a0dark)\u00a0{\n\u00a0\u00a0body\u00a0{\u00a0color:\u00a0white;\u00a0}\n}",
    "lang": "code",
    "tokens": [
     [
      "",
-     ":root {\n  --bg: #"
+     ":root\u00a0{\n\u00a0\u00a0--bg:\u00a0#"
     ],
     [
      "num",
@@ -7182,17 +7182,17 @@
     ],
     [
      "meta",
-     "@media "
+     "@media\u00a0"
     ],
     [
      "",
-     "(prefers-color-scheme: dark) {\n  body { color: white; }\n}"
+     "(prefers-color-scheme:\u00a0dark)\u00a0{\n\u00a0\u00a0body\u00a0{\u00a0color:\u00a0white;\u00a0}\n}"
     ]
    ],
    "code": [
     [
      "",
-     ":root {\n  --bg: #"
+     ":root\u00a0{\n\u00a0\u00a0--bg:\u00a0#"
     ],
     [
      "num",
@@ -7204,21 +7204,21 @@
     ],
     [
      "meta",
-     "@media "
+     "@media\u00a0"
     ],
     [
      "",
-     "(prefers-color-scheme: dark) {\n  body { color: white; }\n}"
+     "(prefers-color-scheme:\u00a0dark)\u00a0{\n\u00a0\u00a0body\u00a0{\u00a0color:\u00a0white;\u00a0}\n}"
     ]
    ]
   },
   {
-   "text": "services:\n  hub:\n    build: ./hub\n    ports:\n      - \"8787:8787\"",
+   "text": "services:\n\u00a0\u00a0hub:\n\u00a0\u00a0\u00a0\u00a0build:\u00a0./hub\n\u00a0\u00a0\u00a0\u00a0ports:\n\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0-\u00a0\"8787:8787\"",
    "lang": "",
    "code": [
     [
      "",
-     "services:\n  hub:\n    build: ./hub\n    ports:\n      - "
+     "services:\n\u00a0\u00a0hub:\n\u00a0\u00a0\u00a0\u00a0build:\u00a0./hub\n\u00a0\u00a0\u00a0\u00a0ports:\n\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0-\u00a0"
     ],
     [
      "str",
@@ -7227,12 +7227,12 @@
    ]
   },
   {
-   "text": "name: Build\non:\n  push:\n    branches: [main]\njobs:\n  test:\n    runs-on: ubuntu-latest",
+   "text": "name:\u00a0Build\non:\n\u00a0\u00a0push:\n\u00a0\u00a0\u00a0\u00a0branches:\u00a0[main]\njobs:\n\u00a0\u00a0test:\n\u00a0\u00a0\u00a0\u00a0runs-on:\u00a0ubuntu-latest",
    "lang": "yaml",
    "tokens": [
     [
      "",
-     "name: Build\n"
+     "name:\u00a0Build\n"
     ],
     [
      "key",
@@ -7244,11 +7244,11 @@
     ],
     [
      "key",
-     "  push"
+     "\u00a0\u00a0push"
     ],
     [
      "",
-     ":\n    branches: [main]\n"
+     ":\n\u00a0\u00a0\u00a0\u00a0branches:\u00a0[main]\n"
     ],
     [
      "key",
@@ -7260,22 +7260,22 @@
     ],
     [
      "key",
-     "  test"
+     "\u00a0\u00a0test"
     ],
     [
      "",
-     ":\n    runs-on: ubuntu-latest"
+     ":\n\u00a0\u00a0\u00a0\u00a0runs-on:\u00a0ubuntu-latest"
     ]
    ],
    "code": [
     [
      "",
-     "name: Build\non:\n  push:\n    branches: [main]\njobs:\n  test:\n    runs-on: ubuntu-latest"
+     "name:\u00a0Build\non:\n\u00a0\u00a0push:\n\u00a0\u00a0\u00a0\u00a0branches:\u00a0[main]\njobs:\n\u00a0\u00a0test:\n\u00a0\u00a0\u00a0\u00a0runs-on:\u00a0ubuntu-latest"
     ]
    ]
   },
   {
-   "text": "[package]\nname = \"fetch\"\nversion = \"0.1.0\"\n\n[dependencies]\nserde = \"1\"",
+   "text": "[package]\nname\u00a0=\u00a0\"fetch\"\nversion\u00a0=\u00a0\"0.1.0\"\n\n[dependencies]\nserde\u00a0=\u00a0\"1\"",
    "lang": "toml",
    "tokens": [
     [
@@ -7288,11 +7288,11 @@
     ],
     [
      "key",
-     "name "
+     "name\u00a0"
     ],
     [
      "",
-     "= "
+     "=\u00a0"
     ],
     [
      "str",
@@ -7304,11 +7304,11 @@
     ],
     [
      "key",
-     "version "
+     "version\u00a0"
     ],
     [
      "",
-     "= "
+     "=\u00a0"
     ],
     [
      "str",
@@ -7328,11 +7328,11 @@
     ],
     [
      "key",
-     "serde "
+     "serde\u00a0"
     ],
     [
      "",
-     "= "
+     "=\u00a0"
     ],
     [
      "str",
@@ -7342,7 +7342,7 @@
    "code": [
     [
      "",
-     "[package]\nname = "
+     "[package]\nname\u00a0=\u00a0"
     ],
     [
      "str",
@@ -7350,7 +7350,7 @@
     ],
     [
      "",
-     "\nversion = "
+     "\nversion\u00a0=\u00a0"
     ],
     [
      "str",
@@ -7358,7 +7358,7 @@
     ],
     [
      "",
-     "\n\n[dependencies]\nserde = "
+     "\n\n[dependencies]\nserde\u00a0=\u00a0"
     ],
     [
      "str",
@@ -7367,12 +7367,12 @@
    ]
   },
   {
-   "text": "FROM golang:1.24-alpine AS build\nWORKDIR /src\nCOPY . .\nRUN go build -o /fetch .",
+   "text": "FROM\u00a0golang:1.24-alpine\u00a0AS\u00a0build\nWORKDIR\u00a0/src\nCOPY\u00a0.\u00a0.\nRUN\u00a0go\u00a0build\u00a0-o\u00a0/fetch\u00a0.",
    "lang": "",
    "code": [
     [
      "",
-     "FROM golang:"
+     "FROM\u00a0golang:"
     ],
     [
      "num",
@@ -7380,21 +7380,21 @@
     ],
     [
      "",
-     "-alpine AS build\nWORKDIR /src\nCOPY . .\nRUN go build -o /fetch ."
+     "-alpine\u00a0AS\u00a0build\nWORKDIR\u00a0/src\nCOPY\u00a0.\u00a0.\nRUN\u00a0go\u00a0build\u00a0-o\u00a0/fetch\u00a0."
     ]
    ]
   },
   {
-   "text": "--- a/main.go\n+++ b/main.go\n@@ -1,3 +1,4 @@\n package main\n+import \"fmt\"\n-var x = 1",
+   "text": "---\u00a0a/main.go\n+++\u00a0b/main.go\n@@\u00a0-1,3\u00a0+1,4\u00a0@@\n\u00a0package\u00a0main\n+import\u00a0\"fmt\"\n-var\u00a0x\u00a0=\u00a01",
    "lang": "",
    "code": [
     [
      "",
-     "--- a/main.go\n+++ b/main.go\n@"
+     "---\u00a0a/main.go\n+++\u00a0b/main.go\n@"
     ],
     [
      "meta",
-     "@ "
+     "@\u00a0"
     ],
     [
      "",
@@ -7414,7 +7414,7 @@
     ],
     [
      "",
-     " +"
+     "\u00a0+"
     ],
     [
      "num",
@@ -7430,7 +7430,7 @@
     ],
     [
      "",
-     " @@\n package main\n+import "
+     "\u00a0@@\n\u00a0package\u00a0main\n+import\u00a0"
     ],
     [
      "str",
@@ -7438,17 +7438,17 @@
     ],
     [
      "",
-     "\n-var x = 1"
+     "\n-var\u00a0x\u00a0=\u00a01"
     ]
    ]
   },
   {
-   "text": "server {\n    listen 80;\n    server_name example.com;\n    location / {\n        proxy_pass http://localhost:8787;\n    }\n}",
+   "text": "server\u00a0{\n\u00a0\u00a0\u00a0\u00a0listen\u00a080;\n\u00a0\u00a0\u00a0\u00a0server_name\u00a0example.com;\n\u00a0\u00a0\u00a0\u00a0location\u00a0/\u00a0{\n\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0proxy_pass\u00a0http://localhost:8787;\n\u00a0\u00a0\u00a0\u00a0}\n}",
    "lang": "code",
    "tokens": [
     [
      "",
-     "server {\n    listen 80;\n    server_name example.com;\n    location / {\n        proxy_pass http://localhost:"
+     "server\u00a0{\n\u00a0\u00a0\u00a0\u00a0listen\u00a080;\n\u00a0\u00a0\u00a0\u00a0server_name\u00a0example.com;\n\u00a0\u00a0\u00a0\u00a0location\u00a0/\u00a0{\n\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0proxy_pass\u00a0http://localhost:"
     ],
     [
      "num",
@@ -7456,13 +7456,13 @@
     ],
     [
      "",
-     ";\n    }\n}"
+     ";\n\u00a0\u00a0\u00a0\u00a0}\n}"
     ]
    ],
    "code": [
     [
      "",
-     "server {\n    listen 80;\n    server_name example.com;\n    location / {\n        proxy_pass http://localhost:"
+     "server\u00a0{\n\u00a0\u00a0\u00a0\u00a0listen\u00a080;\n\u00a0\u00a0\u00a0\u00a0server_name\u00a0example.com;\n\u00a0\u00a0\u00a0\u00a0location\u00a0/\u00a0{\n\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0proxy_pass\u00a0http://localhost:"
     ],
     [
      "num",
@@ -7470,12 +7470,12 @@
     ],
     [
      "",
-     ";\n    }\n}"
+     ";\n\u00a0\u00a0\u00a0\u00a0}\n}"
     ]
    ]
   },
   {
-   "text": "```python\nx = 1\n```",
+   "text": "```python\nx\u00a0=\u00a01\n```",
    "lang": "python",
    "tokens": [
     [
@@ -7484,7 +7484,7 @@
     ],
     [
      "",
-     "x = 1"
+     "x\u00a0=\u00a01"
     ],
     [
      "meta",
@@ -7498,7 +7498,7 @@
     ],
     [
      "",
-     "x = 1"
+     "x\u00a0=\u00a01"
     ],
     [
      "meta",
@@ -7507,7 +7507,7 @@
    ]
   },
   {
-   "text": "```\nsome thing = other;\n```",
+   "text": "```\nsome\u00a0thing\u00a0=\u00a0other;\n```",
    "lang": "code",
    "tokens": [
     [
@@ -7516,7 +7516,7 @@
     ],
     [
      "",
-     "some thing = other;"
+     "some\u00a0thing\u00a0=\u00a0other;"
     ],
     [
      "meta",
@@ -7530,7 +7530,7 @@
     ],
     [
      "",
-     "some thing = other;"
+     "some\u00a0thing\u00a0=\u00a0other;"
     ],
     [
      "meta",
@@ -7599,12 +7599,12 @@
    ]
   },
   {
-   "text": "emoji 🎾 = \"ünïcödé\"; // ✓",
+   "text": "emoji\u00a0🎾\u00a0=\u00a0\"ünïcödé\";\u00a0//\u00a0✓",
    "lang": "",
    "code": [
     [
      "",
-     "emoji 🎾 = "
+     "emoji\u00a0🎾\u00a0=\u00a0"
     ],
     [
      "str",
@@ -7612,21 +7612,21 @@
     ],
     [
      "",
-     "; "
+     ";\u00a0"
     ],
     [
      "com",
-     "// ✓"
+     "//\u00a0✓"
     ]
    ]
   },
   {
-   "text": "\ttabs\r\nand windows line endings\r\n",
+   "text": "\ttabs\r\nand\u00a0windows\u00a0line\u00a0endings\r\n",
    "lang": "",
    "code": [
     [
      "",
-     "\ttabs\r\nand windows line endings\r\n"
+     "\ttabs\r\nand\u00a0windows\u00a0line\u00a0endings\r\n"
     ]
    ]
   },
@@ -7671,12 +7671,12 @@
    ]
   },
   {
-   "text": " \n@",
+   "text": "\u2028\n@",
    "lang": "",
    "code": [
     [
      "",
-     " \n@"
+     "\u2028\n@"
     ]
    ]
   },
@@ -7813,12 +7813,12 @@
    ]
   },
   {
-   "text": "　\n[package]\nname = \"fetch\"\nversion = \"0.1.0\"\n\n[dependencies]\nserde = \"1\"",
+   "text": "\u3000\n[package]\nname = \"fetch\"\nversion = \"0.1.0\"\n\n[dependencies]\nserde = \"1\"",
    "lang": "toml",
    "tokens": [
     [
      "",
-     "　\n"
+     "\u3000\n"
     ],
     [
      "kw",
@@ -7884,7 +7884,7 @@
    "code": [
     [
      "",
-     "　\n[package]\nname = "
+     "\u3000\n[package]\nname = "
     ],
     [
      "str",
@@ -8597,12 +8597,12 @@
    ]
   },
   {
-   "text": "wl-pas te | fetch send",
+   "text": "wl-pas\u2028te | fetch send",
    "lang": "",
    "code": [
     [
      "",
-     "wl-pas te | fetch send"
+     "wl-pas\u2028te | fetch send"
     ]
    ]
   },
@@ -8711,7 +8711,7 @@
    ]
   },
   {
-   "text": "```\n \n```",
+   "text": "```\n\u2028\n```",
    "lang": "code",
    "tokens": [
     [
@@ -8720,7 +8720,7 @@
     ],
     [
      "",
-     " "
+     "\u2028"
     ],
     [
      "meta",
@@ -8734,7 +8734,7 @@
     ],
     [
      "",
-     " "
+     "\u2028"
     ],
     [
      "meta",
@@ -9385,12 +9385,12 @@
    ]
   },
   {
-   "text": "　\n--",
+   "text": "\u3000\n--",
    "lang": "",
    "code": [
     [
      "",
-     "　\n--"
+     "\u3000\n--"
     ]
    ]
   },
@@ -9777,12 +9777,12 @@
    ]
   },
   {
-   "text": "　\n{% if product.available %}\n  <span class=\"price\">{{ product.price | money }}</span>\n{% endif %}",
+   "text": "\u3000\n{% if product.available %}\n  <span class=\"price\">{{ product.price | money }}</span>\n{% endif %}",
    "lang": "liquid",
    "tokens": [
     [
      "",
-     "　\n"
+     "\u3000\n"
     ],
     [
      "meta",
@@ -9880,7 +9880,7 @@
    "code": [
     [
      "",
-     "　\n{% "
+     "\u3000\n{% "
     ],
     [
      "kw",
@@ -10455,12 +10455,12 @@
    ]
   },
   {
-   "text": " \n${",
+   "text": "\u2028\n${",
    "lang": "",
    "code": [
     [
      "",
-     " \n${"
+     "\u2028\n${"
     ]
    ]
   },
@@ -11359,12 +11359,12 @@
    ]
   },
   {
-   "text": " fn main() {\n    let mut total = 0;\n    println!(\"{}\", total);\n}",
+   "text": "\u2028fn main() {\n    let mut total = 0;\n    println!(\"{}\", total);\n}",
    "lang": "rust",
    "tokens": [
     [
      "",
-     " fn "
+     "\u2028fn "
     ],
     [
      "fn",
@@ -11410,7 +11410,7 @@
    "code": [
     [
      "",
-     " fn "
+     "\u2028fn "
     ],
     [
      "fn",
@@ -11511,12 +11511,12 @@
    ]
   },
   {
-   "text": "　Shopping list:\n  milk\n  eggs",
+   "text": "\u3000Shopping list:\n  milk\n  eggs",
    "lang": "",
    "code": [
     [
      "",
-     "　Shopping list:\n  milk\n  eggs"
+     "\u3000Shopping list:\n  milk\n  eggs"
     ]
    ]
   },
@@ -11701,12 +11701,12 @@
    ]
   },
   {
-   "text": " \ndef greet(name)\n  puts \"hello #{name}\"\nend",
+   "text": "\u2028\ndef greet(name)\n  puts \"hello #{name}\"\nend",
    "lang": "ruby",
    "tokens": [
     [
      "",
-     " \n"
+     "\u2028\n"
     ],
     [
      "kw",
@@ -11748,7 +11748,7 @@
    "code": [
     [
      "",
-     " \n"
+     "\u2028\n"
     ],
     [
      "kw",
@@ -12211,12 +12211,12 @@
    ]
   },
   {
-   "text": " --",
+   "text": "\u2028--",
    "lang": "",
    "code": [
     [
      "",
-     " --"
+     "\u2028--"
     ]
    ]
   },
@@ -12643,7 +12643,7 @@
    ]
   },
   {
-   "text": "node 3 is down 　again",
+   "text": "node 3 is down \u3000again",
    "lang": "",
    "code": [
     [
@@ -12656,7 +12656,7 @@
     ],
     [
      "",
-     " is down 　again"
+     " is down \u3000again"
     ]
    ]
   },
@@ -13463,12 +13463,12 @@
    ]
   },
   {
-   "text": "　\nfor the record: I said no",
+   "text": "\u3000\nfor the record: I said no",
    "lang": "",
    "code": [
     [
      "",
-     "　\n"
+     "\u3000\n"
     ],
     [
      "kw",
@@ -13813,12 +13813,12 @@
    ]
   },
   {
-   "text": "\"untermina　ted",
+   "text": "\"untermina\u3000ted",
    "lang": "",
    "code": [
     [
      "",
-     "\"untermina　ted"
+     "\"untermina\u3000ted"
     ]
    ]
   },
@@ -14199,7 +14199,7 @@
    ]
   },
   {
-   "text": "document.querySelectorAll('.item').forEach((el) => el.rem　ove());",
+   "text": "document.querySelectorAll('.item').forEach((el) => el.rem\u3000ove());",
    "lang": "javascript",
    "tokens": [
     [
@@ -14236,7 +14236,7 @@
     ],
     [
      "fn",
-     "rem　ove"
+     "rem\u3000ove"
     ],
     [
      "",
@@ -14274,7 +14274,7 @@
     ],
     [
      "fn",
-     "rem　ove"
+     "rem\u3000ove"
     ],
     [
      "",
@@ -15291,7 +15291,7 @@
    ]
   },
   {
-   "text": "$ (",
+   "text": "$\u2028(",
    "lang": "",
    "code": [
     [
@@ -15300,7 +15300,7 @@
     ],
     [
      "fn",
-     " "
+     "\u2028"
     ],
     [
      "",
@@ -16001,12 +16001,12 @@
    ]
   },
   {
-   "text": " \n```bash\nmake install\n```",
+   "text": "\u2028\n```bash\nmake install\n```",
    "lang": "bash",
    "tokens": [
     [
      "meta",
-     " \n```bash\n"
+     "\u2028\n```bash\n"
     ],
     [
      "fn",
@@ -16024,7 +16024,7 @@
    "code": [
     [
      "meta",
-     " \n```bash\n"
+     "\u2028\n```bash\n"
     ],
     [
      "",
@@ -16545,12 +16545,12 @@
    ]
   },
   {
-   "text": "　\nSELECT id, name FROM users WHERE active = 1 ORDER BY name;",
+   "text": "\u3000\nSELECT id, name FROM users WHERE active = 1 ORDER BY name;",
    "lang": "sql",
    "tokens": [
     [
      "",
-     "　\n"
+     "\u3000\n"
     ],
     [
      "kw",
@@ -16604,7 +16604,7 @@
    "code": [
     [
      "",
-     "　\nSELECT id, name FROM users WHERE active = "
+     "\u3000\nSELECT id, name FROM users WHERE active = "
     ],
     [
      "num",
@@ -16843,7 +16843,7 @@
    ]
   },
   {
-   "text": ".card {\n \n  border-radius: 12px;\n  padding: 12px 14px;\n}",
+   "text": ".card {\n\u2028\n  border-radius: 12px;\n  padding: 12px 14px;\n}",
    "lang": "css",
    "tokens": [
     [
@@ -16860,7 +16860,7 @@
     ],
     [
      "typ",
-     " "
+     "\u2028"
     ],
     [
      "",
@@ -16910,7 +16910,7 @@
    "code": [
     [
      "",
-     ".card {\n \n  border-radius: "
+     ".card {\n\u2028\n  border-radius: "
     ],
     [
      "num",
@@ -17047,12 +17047,12 @@
    ]
   },
   {
-   "text": " let me know if that works for you",
+   "text": "\u2028let me know if that works for you",
    "lang": "",
    "code": [
     [
      "",
-     " let me know "
+     "\u2028let me know "
     ],
     [
      "kw",
@@ -17073,7 +17073,7 @@
    ]
   },
   {
-   "text": "FROM golang:1.24-alpine AS build \nWORKDIR /src\nCOPY . .\nRUN go build -o /fetch .",
+   "text": "FROM golang:1.24-alpine AS build\u2028\nWORKDIR /src\nCOPY . .\nRUN go build -o /fetch .",
    "lang": "",
    "code": [
     [
@@ -17086,7 +17086,7 @@
     ],
     [
      "",
-     "-alpine AS build \nWORKDIR /src\nCOPY . .\nRUN go build -o /fetch ."
+     "-alpine AS build\u2028\nWORKDIR /src\nCOPY . .\nRUN go build -o /fetch ."
     ]
    ]
   },
@@ -18293,12 +18293,12 @@
    ]
   },
   {
-   "text": "　\n```\nsome thing = other;\n```",
+   "text": "\u3000\n```\nsome thing = other;\n```",
    "lang": "code",
    "tokens": [
     [
      "meta",
-     "　\n```\n"
+     "\u3000\n```\n"
     ],
     [
      "",
@@ -18312,7 +18312,7 @@
    "code": [
     [
      "meta",
-     "　\n```\n"
+     "\u3000\n```\n"
     ],
     [
      "",
@@ -18325,7 +18325,7 @@
    ]
   },
   {
-   "text": "import the photos from the camer a before friday",
+   "text": "import the photos from the camer\u2028a before friday",
    "lang": "",
    "code": [
     [
@@ -18342,7 +18342,7 @@
     ],
     [
      "",
-     " the camer a before friday"
+     " the camer\u2028a before friday"
     ]
    ]
   },
@@ -18839,12 +18839,12 @@
    ]
   },
   {
-   "text": "　\ngo home",
+   "text": "\u3000\ngo home",
    "lang": "",
    "code": [
     [
      "",
-     "　\ngo home"
+     "\u3000\ngo home"
     ]
    ]
   },
@@ -19215,12 +19215,12 @@
    ]
   },
   {
-   "text": "find　 me a good restaurant",
+   "text": "find\u3000 me a good restaurant",
    "lang": "",
    "code": [
     [
      "",
-     "find　 me a good restaurant"
+     "find\u3000 me a good restaurant"
     ]
    ]
   },
@@ -19807,12 +19807,12 @@
    ]
   },
   {
-   "text": "　from PIL import Image\nim = Image.open('a.png')\nim.save('b.jpg')",
+   "text": "\u3000from PIL import Image\nim = Image.open('a.png')\nim.save('b.jpg')",
    "lang": "python",
    "tokens": [
     [
      "",
-     "　from PIL "
+     "\u3000from PIL "
     ],
     [
      "kw",
@@ -19858,7 +19858,7 @@
    "code": [
     [
      "",
-     "　from PIL "
+     "\u3000from PIL "
     ],
     [
      "kw",
@@ -20007,12 +20007,12 @@
    ]
   },
   {
-   "text": " \nmake sure you call me back",
+   "text": "\u2028\nmake sure you call me back",
    "lang": "",
    "code": [
     [
      "",
-     " \nmake sure you call me back"
+     "\u2028\nmake sure you call me back"
     ]
    ]
   },
@@ -20765,7 +20765,7 @@
    ]
   },
   {
-   "text": "if you can, bring the ca ble (the long one) tomorrow",
+   "text": "if you can, bring the ca\u2028ble (the long one) tomorrow",
    "lang": "",
    "code": [
     [
@@ -20774,7 +20774,7 @@
     ],
     [
      "",
-     " you can, bring the ca ble (the long one) tomorrow"
+     " you can, bring the ca\u2028ble (the long one) tomorrow"
     ]
    ]
   },
@@ -20893,7 +20893,7 @@
    ]
   },
   {
-   "text": "FETCH_DOMAIN=fetch.example.com docker compose -f docker-co　mpose.vps.yml up -d",
+   "text": "FETCH_DOMAIN=fetch.example.com docker compose -f docker-co\u3000mpose.vps.yml up -d",
    "lang": "bash",
    "tokens": [
     [
@@ -20918,7 +20918,7 @@
     ],
     [
      "",
-     " docker-co　mpose.vps.yml up "
+     " docker-co\u3000mpose.vps.yml up "
     ],
     [
      "attr",
@@ -20928,7 +20928,7 @@
    "code": [
     [
      "",
-     "FETCH_DOMAIN=fetch.example.com docker compose -f docker-co　mpose.vps.yml up -d"
+     "FETCH_DOMAIN=fetch.example.com docker compose -f docker-co\u3000mpose.vps.yml up -d"
     ]
    ]
   },
@@ -21181,12 +21181,12 @@
    ]
   },
   {
-   "text": "　\nssh root@10.0.0.12",
+   "text": "\u3000\nssh root@10.0.0.12",
    "lang": "bash",
    "tokens": [
     [
      "fn",
-     "　"
+     "\u3000"
     ],
     [
      "",
@@ -21204,7 +21204,7 @@
    "code": [
     [
      "",
-     "　\nssh root@"
+     "\u3000\nssh root@"
     ],
     [
      "num",
@@ -22579,12 +22579,12 @@
    ]
   },
   {
-   "text": "　{% if",
+   "text": "\u3000{% if",
    "lang": "",
    "code": [
     [
      "",
-     "　{% "
+     "\u3000{% "
     ],
     [
      "kw",
@@ -23069,12 +23069,12 @@
    ]
   },
   {
-   "text": " {% if product.available %}\n  <span class=\"price\">{{ product.price | money }}</span>\n{% endif %}",
+   "text": "\u2028{% if product.available %}\n  <span class=\"price\">{{ product.price | money }}</span>\n{% endif %}",
    "lang": "liquid",
    "tokens": [
     [
      "",
-     " "
+     "\u2028"
     ],
     [
      "meta",
@@ -23172,7 +23172,7 @@
    "code": [
     [
      "",
-     " {% "
+     "\u2028{% "
     ],
     [
      "kw",
@@ -23791,12 +23791,12 @@
    ]
   },
   {
-   "text": "　+49 151 2345678",
+   "text": "\u3000+49 151 2345678",
    "lang": "",
    "code": [
     [
      "",
-     "　+"
+     "\u3000+"
     ],
     [
      "num",
@@ -25171,12 +25171,12 @@
    ]
   },
   {
-   "text": "　Meeting moved to 3pm, room 4. Bring the laptop.",
+   "text": "\u3000Meeting moved to 3pm, room 4. Bring the laptop.",
    "lang": "",
    "code": [
     [
      "",
-     "　Meeting moved to "
+     "\u3000Meeting moved to "
     ],
     [
      "num",
@@ -25957,7 +25957,7 @@
    ]
   },
   {
-   "text": "document.querySelectorAll('.item').forEach((el) => el. remove());",
+   "text": "document.querySelectorAll('.item').forEach((el) => el.\u2028remove());",
    "lang": "javascript",
    "tokens": [
     [
@@ -25994,7 +25994,7 @@
     ],
     [
      "fn",
-     " remove"
+     "\u2028remove"
     ],
     [
      "",
@@ -26032,7 +26032,7 @@
     ],
     [
      "fn",
-     " remove"
+     "\u2028remove"
     ],
     [
      "",
@@ -26203,7 +26203,7 @@
    ]
   },
   {
-   "text": "apt update\napt install -y curl git\nsystemctl enable --no w docker",
+   "text": "apt update\napt install -y curl git\nsystemctl enable --no\u2028w docker",
    "lang": "bash",
    "tokens": [
     [
@@ -26240,7 +26240,7 @@
     ],
     [
      "attr",
-     "--no w"
+     "--no\u2028w"
     ],
     [
      "",
@@ -26250,7 +26250,7 @@
    "code": [
     [
      "",
-     "apt update\napt install -y curl git\nsystemctl enable --no w docker"
+     "apt update\napt install -y curl git\nsystemctl enable --no\u2028w docker"
     ]
    ]
   },
@@ -28199,12 +28199,12 @@
    ]
   },
   {
-   "text": " \n#",
+   "text": "\u2028\n#",
    "lang": "",
    "code": [
     [
      "",
-     " \n"
+     "\u2028\n"
     ],
     [
      "com",
@@ -28359,12 +28359,12 @@
    ]
   },
   {
-   "text": " \n1. unpack the printer\n2. level the bed\n3. print a test cube",
+   "text": "\u2028\n1. unpack the printer\n2. level the bed\n3. print a test cube",
    "lang": "",
    "code": [
     [
      "",
-     " \n"
+     "\u2028\n"
     ],
     [
      "num",

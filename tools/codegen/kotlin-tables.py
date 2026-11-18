@@ -11,6 +11,7 @@ import json
 import os
 import subprocess
 import tempfile
+import unicodedata
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SOURCE = os.path.join(ROOT, 'hub/web/fetch-code.js')
@@ -50,7 +51,9 @@ def dump():
 
 
 def kt(s):
-    return '"' + s.replace('\\', '\\\\').replace('"', '\\"').replace('$', '\\$') + '"'
+    s = s.replace('\\', '\\\\').replace('"', '\\"').replace('$', '\\$')
+    # Invisible characters as escapes, so nothing hides in the generated file.
+    return '"' + ''.join('\\u%04x' % ord(c) if unicodedata.category(c) in ('Cf', 'Zl', 'Zp') else c for c in s) + '"'
 
 
 def words(xs, indent):
