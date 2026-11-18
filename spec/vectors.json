@@ -114,5 +114,29 @@
       "of": 4,
       "op": "swap_first_chunks"
     }
+  ],
+  "invites": [
+    {
+      "link": "https://fetch.example.com/#invite=abcd-efgh-jkmn",
+      "hub": "https://fetch.example.com",
+      "code": "abcd-efgh-jkmn"
+    },
+    {
+      "link": "http://192.168.1.20:8787/#invite=2345-6789-abcd",
+      "hub": "http://192.168.1.20:8787",
+      "code": "2345-6789-abcd"
+    },
+    {
+      "link": "  https://fetch.example.com/#invite=abcd-efgh-jkmn\n",
+      "hub": "https://fetch.example.com",
+      "code": "abcd-efgh-jkmn"
+    }
+  ],
+  "not_invites": [
+    "fetchpair://v1?hub=http%3A%2F%2F192.168.1.20%3A8787\u0026key=EBESExQVFhcYGRobHB0eHyAhIiMkJSYnKCkqKywtLi8\u0026token=abcde-fghjk-mnpqr-stuvw",
+    "https://fetch.example.com/",
+    "https://fetch.example.com/#other=1",
+    "abcd-efgh-jkmn",
+    "fetchpair://v1?hub=x\u0026invite=abcd"
   ]
 }

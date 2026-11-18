@@ -139,6 +139,27 @@
     return { hub: hub, token: token, key: key };
   }
 
+  // An invite link is the hub's own address with the code after #, so it
+  // opens this page in a browser: https://fetch.example.com/#invite=abcd-efgh-jkmn.
+  // Returns { hub, code }, or null for anything else.
+  function parseInvite(link) {
+    var m = /^(https?:\/\/[^#]+)#(.*)$/i.exec(String(link || '').trim());
+    if (!m) return null;
+    var code = '';
+    m[2].split('&').forEach(function (pair) {
+      var i = pair.indexOf('=');
+      if (i > 0 && pair.slice(0, i) === 'invite') {
+        try { code = decodeURIComponent(pair.slice(i + 1).replace(/\+/g, ' ')).trim(); } catch (e) { /* skip */ }
+      }
+    });
+    var hub = normalizeURL(m[1].split('?')[0]);
+    return hub && code ? { hub: hub, code: code } : null;
+  }
+
+  function inviteLink(hub, code) {
+    return String(hub).replace(/\/+$/, '') + '/#invite=' + encodeURIComponent(code);
+  }
+
   // ---- metadata ----
 
   function sealMetaWithSalt(key, meta, salt) {
@@ -258,6 +279,7 @@
     VERSION: VERSION, CHUNK: CHUNK, SEALED_TYPE: SEALED_TYPE, MAX_TEXT_IN_META: MAX_TEXT_IN_META, OpenError: OpenError,
     newKey: newKey, keyToText: keyToText, keyFromText: keyFromText, check: check, fingerprint: fingerprint,
     normalizeURL: normalizeURL, pairingLink: pairingLink, parsePairing: parsePairing,
+    parseInvite: parseInvite, inviteLink: inviteLink,
     sealMeta: sealMeta, openMeta: openMeta, dataSealer: dataSealer, dataOpener: dataOpener,
     sealBlob: sealBlob, uploadParts: uploadParts, sealedSize: sealedSize,
     toBase64: toBase64, fromBase64: fromBase64,

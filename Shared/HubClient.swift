@@ -103,6 +103,36 @@ struct HubClient {
         }
     }
 
+    // MARK: spaces
+
+    /// Makes a space of your own on a hub, with an invite code or (on a
+    /// public hub) none, and returns its token. Needs no token itself.
+    static func join(_ base: URL, code: String) async throws -> String {
+        var req = URLRequest(url: base.appendingPathComponent("api/spaces"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body = try JSONSerialization.data(withJSONObject: ["invite": code])
+        let result: (Data, URLResponse)
+        do {
+            result = try await URLSession.shared.upload(for: req, from: body)
+        } catch let error as URLError {
+            throw HubError.unreachable(error.localizedDescription)
+        }
+        let data = result.0
+        let status = (result.1 as? HTTPURLResponse)?.statusCode ?? 0
+        if status == 404 || status == 405 {
+            throw HubError.server(status, "This hub doesn't hand out spaces. It may need an update.")
+        }
+        guard status == 201 else {
+            let message = String(data: data.prefix(300), encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            throw HubError.server(status, message)
+        }
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let token = json["token"] as? String else {
+            throw HubError.server(status, "The hub's answer didn't make sense.")
+        }
+        return token
+    }
+
     // MARK: the key the devices share
 
     /// The fingerprint of the key the hub's devices use, or "" if none is set yet.

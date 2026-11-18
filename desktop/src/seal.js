@@ -97,6 +97,17 @@ function parsePairing(link) {
   return { hub, token, key };
 }
 
+// An invite link: the hub's address with the code after #, as in
+// https://fetch.example.com/#invite=abcd-efgh-jkmn. Returns { hub, code }, or
+// null for anything else.
+function parseInvite(link) {
+  const m = /^(https?:\/\/[^#]+)#(.*)$/i.exec(String(link || '').trim());
+  if (!m) return null;
+  const code = (new URLSearchParams(m[2]).get('invite') || '').trim();
+  const hub = normalizeURL(m[1].split('?')[0]);
+  return hub && code ? { hub, code } : null;
+}
+
 // ---- metadata ----
 
 function sealMetaWithSalt(key, meta, salt) {
@@ -191,6 +202,6 @@ function uploadHead(envelope) {
 
 module.exports = {
   VERSION, CHUNK, MAX_TEXT_IN_META, SEALED_TYPE, OpenError,
-  newKey, keyToText, keyFromText, check, fingerprint, normalizeURL, pairingLink, parsePairing,
+  newKey, keyToText, keyFromText, check, fingerprint, normalizeURL, pairingLink, parsePairing, parseInvite,
   sealMeta, sealMetaWithSalt, openMeta, sealBuffer, sealFile, openBuffer, sealedSize, uploadHead,
 };

@@ -6,7 +6,8 @@
 
 <p align="center">
   Move text, pictures and files between your iPhone or Android phone and your Windows, macOS and Linux computers.<br>
-  One feed, live on every device, that cleans up after itself. You host it yourself.
+  One feed, live on every device, that cleans up after itself. You host it yourself,<br>
+  and can give friends a space of their own on it that you can't read.
 </p>
 
 The parts:
@@ -71,10 +72,29 @@ The image (`ghcr.io/horsehound/fetch`, for amd64 and arm64) comes with every rel
 | `-data` / `FETCH_DATA` | `./data` | where the feed is stored |
 | `-token` / `FETCH_TOKEN` | generated | your own token, at least 12 characters |
 | `-ttl` / `FETCH_TTL` | `168h` | how long unpinned items live; `0` keeps everything |
-| `-max-mb` | `500` | largest upload |
+| `-max-mb` / `FETCH_MAX_MB` | `500` | largest upload |
+| `-mode` / `FETCH_MODE` | `invite` | who else may make a space here: `invite` (with a code from you), `public` (anyone) or `private` (nobody); see [Sharing your hub](#sharing-your-hub) |
+| `-space-mb` / `FETCH_SPACE_MB` | `500` | storage for each space you hand out; `0` for no limit. Your own feed has none |
+| `-max-spaces` / `FETCH_MAX_SPACES` | `50` | most spaces besides your own |
+| `-space-idle` / `FETCH_SPACE_IDLE` | `2160h` (90 days) | delete a space nobody has used for this long; `0` never. Never applies to your own |
+| `-trust-proxy` / `FETCH_TRUST_PROXY` | off | behind a reverse proxy: take visitors' addresses from `X-Forwarded-For` (for the public mode's limit per address) |
 | `-cert`, `-key` / `FETCH_CERT`, `FETCH_KEY` | none | serve https directly with this certificate |
 
 The token decides who may use the hub. It can't read anything: whoever has the token but not the key can delete or withhold items, but not read, change or fake them. Keep both private anyway.
+
+### Sharing your hub
+
+Other people can use your hub without seeing your feed, and without you seeing theirs. Each person gets a **space**: a feed of their own with its own token, encrypted with a key that only their devices have. There are no accounts; the pairing link is all a space needs.
+
+- **Invite** (the default): open **Invite someone** at the bottom of the web page or the desktop app's window, or run `fetch invite` on a computer paired with your own feed. Send them the link it gives you (`https://your-hub/#invite=…`). Opened in a browser it makes their space right there; the apps and `fetch pair` take it too. A link works once, for 7 days (`fetch invite -days 30 -mb 2000` for longer or bigger).
+- **Public**: anyone who finds the hub can make a space (a few per address per day). Behind a reverse proxy, set `FETCH_TRUST_PROXY=1` so that limit sees their real address; `docker-compose.vps.yml` does.
+- **Private**: just your own feed, as before.
+
+Each space holds up to `-space-mb` (500 MB); when it's full, sending says so until something is deleted or expires. Spaces nobody has used for 90 days are deleted.
+
+What you can see as the host: how many spaces there are, how much each stores, how many items, and when it was made and last used (`fetch spaces`). Not what's in them: text, names, pictures and files are all encrypted with keys you don't have. `fetch spaces delete <id>` deletes one. Someone can delete their own space under **Delete my space** in their browser.
+
+Your own feed is the one the printed token opens. Nothing about it changes when you share the hub.
 
 ### Updating the hub
 
@@ -94,7 +114,7 @@ Forks: releases come from the repository that built them, so a fork's hub update
 
 The first device creates the key; every other device gets it from one that already has it. The key never touches the hub.
 
-1. **The first device**: install Fetch on it (see below), and in the first-device part of its settings enter the hub's address and token, then **Set up**.
+1. **The first device**: install Fetch on it (see below), and in the first-device part of its settings enter the hub's address and token, then **Set up**. On someone else's hub, use the invite link they sent you instead (paste it where a pairing link goes, or just open it in a browser), or the invite code as the token. On a public hub, leave the token empty.
 2. **Every other device:** on a device that's set up, open **Add a device**. It shows a QR code and a pairing link.
    - iPhone: scan the QR code with the Camera app; it opens Fetch, which asks to pair.
    - Android: **Settings → Scan code** in Fetch.
@@ -243,6 +263,12 @@ Everything is HTTP with `Authorization: Bearer <token>`, and every item is encry
 | `DELETE /api/items` | delete everything unpinned |
 | `GET`, `PUT`, `DELETE /api/vault` | the check value of the key, to tell matching devices apart; `DELETE` starts over |
 | `GET /api/events` | server-sent events; a `data:` line means the feed changed |
+| `GET /api/info` | version, item lifetime, upload limit, and this space's storage limit and use |
+| `GET /api/hub` | no token needed: the mode, so an app knows whether it can make a space |
+| `POST /api/spaces` | no token needed: `{"invite": "<code>"}` (or none on a public hub) makes a space and returns its token |
+| `DELETE /api/space` | delete your own space and everything in it |
+| `POST`, `GET /api/invites`, `DELETE /api/invites/{code}` | the host's own token only: make, list and revoke invite codes |
+| `GET /api/spaces`, `DELETE /api/spaces/{id}` | the host's own token only: list spaces and their size, or delete one |
 
 ## Building it yourself
 

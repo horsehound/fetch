@@ -290,12 +290,38 @@ object Seal {
                 null
             }
 
-            private fun decode(s: String) = try {
-                URLDecoder.decode(s, "UTF-8")
-            } catch (e: IllegalArgumentException) {
-                s
+        }
+    }
+
+    /**
+     * An invite link: the hub's own address with the code after #, as in
+     * https://fetch.example.com/#invite=abcd-efgh-jkmn. With it you make a
+     * space of your own on someone else's hub.
+     */
+    data class Invite(val hub: String, val code: String) {
+        companion object {
+            /** null for anything that isn't an invite link. */
+            fun parseOrNull(link: String?): Invite? {
+                val s = link?.trim() ?: return null
+                val hash = s.indexOf('#')
+                if (hash < 0) return null
+                val address = s.substring(0, hash)
+                val lower = address.lowercase()
+                if (!lower.startsWith("http://") && !lower.startsWith("https://")) return null
+                val hub = normalizeUrl(address.substringBefore('?')) ?: return null
+                var code = ""
+                for (part in s.substring(hash + 1).split('&')) {
+                    if (part.substringBefore('=') == "invite") code = decode(part.substringAfter('=', "")).trim()
+                }
+                return if (code.isEmpty()) null else Invite(hub, code)
             }
         }
+    }
+
+    private fun decode(s: String) = try {
+        URLDecoder.decode(s, "UTF-8")
+    } catch (e: IllegalArgumentException) {
+        s
     }
 
     /** Percent-encodes everything but letters, digits and -._~, as Go's url.QueryEscape does. */

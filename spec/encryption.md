@@ -26,6 +26,14 @@ fetchpair://v1?hub=<hub address>&token=<access token>&key=<key>
 
 Query values are percent-encoded; parameter order doesn't matter. A hub address without a scheme gets `http://` if it looks like a home-network address (an IP, a port, a bare name or `.local`/`.lan`) and `https://` otherwise. The link holds everything needed to read and change the feed, so it is shown as a QR code or copied once and treated like a password.
 
+## Invite links
+
+```
+<hub address>/#invite=<code>
+```
+
+What a hub's host sends someone so they can make a space of their own on it (see below). It is the hub's own address, so it opens the web page in a browser; the code sits after `#`, so browsers never send it to the hub. Every client also takes it wherever a pairing link goes: the hub address is everything before `#` (without a query), normalized as above; the code is the `invite` parameter of what follows `#`. Anything without both is not an invite link. Invite links hold no key: the device that uses one makes the space's key itself.
+
 ## An item
 
 Each item gets a fresh random 16-byte salt. Two keys come from it:
@@ -73,7 +81,9 @@ Because `data_key` comes from the envelope's salt, data can only be decrypted to
 
 ## The hub's API
 
-All calls need `Authorization: Bearer <token>`.
+A hub holds **spaces**: separate feeds, each with its own token, items and check. The token decides which space a call works in; nothing in one space can be seen or changed with another's token. The host's own feed is a space like the others, except that it can't be deleted and its token also runs the hub (invites, listing and deleting spaces).
+
+All calls except `GET /api/hub` and `POST /api/spaces` need `Authorization: Bearer <token>`.
 
 | | |
 |---|---|
@@ -87,12 +97,25 @@ All calls need `Authorization: Bearer <token>`.
 | `PUT /api/vault` | `{"check": "<hex>"}`: the first device claims the hub. `409` if another key's check is already there |
 | `DELETE /api/vault` | start over: deletes every item, pinned too, and the check |
 | `GET /api/events` | server-sent events; any `data:` line other than `hello` means the feed changed |
-| `GET /api/info` | `{"version", "format": 1, "ttl_hours", "max_mb"}` |
+| `GET /api/info` | `{"version", "format": 1, "ttl_hours", "max_mb", "owner", "mode", "limit_mb", "used_bytes"}`: `owner` is true for the host's own feed; `limit_mb` is this space's storage limit (`0` none) and `used_bytes` what it uses (encrypted data plus envelopes) |
+| `GET /api/hub` | no token: `{"fetch": true, "version", "format", "mode", "space_mb"}`. `mode` is `private` (no new spaces), `invite` (with a code) or `public` (anyone) |
+| `POST /api/spaces` | no token: `{"invite": "<code>"}`, empty on a public hub. `201 {"token", "limit_mb"}` for a new, empty space with no check yet. `403` with a readable reason (private hub, code needed, code used up or expired), `429` too many from one address, `503` the hub is full |
+| `DELETE /api/space` | deletes the caller's own space and everything in it; its token stops working. `403` for the host's own feed |
+| `POST /api/invites` | host only: `{"days": 7, "mb": 0}` (both optional; `mb` 0 = the hub's default). `201 {"code", "created", "expires", "limit_mb"}`. A code makes one space |
+| `GET /api/invites`, `DELETE /api/invites/{code}` | host only: the unused codes; revoke one |
+| `GET /api/spaces`, `DELETE /api/spaces/{id}` | host only: every other space's id, dates, size, item count and limit (never its contents); delete one |
+
+An upload into a space that would go past its storage limit is refused with `507` and a message saying the space is full; nothing of it is kept.
 
 ## Setting up a device
 
 1. **With a pairing link**: parse it, `GET /api/vault`. If the hub's check equals the key's, done. If the hub has no check (it was reset), `PUT` it. Otherwise the link is stale: say so.
-2. **First device**: the user enters the hub address and token. If `GET /api/vault` has no check, create a key and `PUT` its check. If it has one, this hub is already set up: pair from a device that is.
+2. **First device**: the user enters the hub address and a token or invite code (or nothing, on a public hub).
+   - Nothing: `POST /api/spaces` with no code; use the token it returns.
+   - Otherwise try it as a token with `GET /api/vault`. On `401` it is an invite code instead: `POST /api/spaces` with it and use the token it returns.
+   - Then, if the space has no check, create a key and `PUT` its check. If it has one, it is already set up: pair from a device that is.
+   
+   **With an invite link**, the same with the link's hub address and code.
 3. **Start over** (any set-up device, after a clear warning): `DELETE /api/vault`, create a new key, `PUT` its check. Every other device has to pair again.
 
 Devices check the vault again whenever they connect, so a device whose key no longer matches (the hub was reset elsewhere) can say so instead of showing nothing.

@@ -175,6 +175,25 @@ async function main() {
     await full.click('#closeSheet');
     step('Add a device copies a pairing link for this hub and key');
 
+    // ---- the host invites someone ----
+    await full.waitForSelector('#hostLine:not([hidden])');
+    await app.evaluate(({ clipboard }) => clipboard.writeText(''));
+    await full.click('#invite');
+    await full.waitForFunction(() => !document.getElementById('sheet').hidden && document.getElementById('sheetTitle').textContent === 'Invite someone');
+    assert.equal(await full.isVisible('#startOver'), false, 'no start-over button on an invite');
+    assert.match(await full.textContent('#sheetWarn'), /works once.*500 MB/);
+    await full.click('#copyLink');
+    const inviteLink = await until('the invite link on the clipboard', () => app.evaluate(({ clipboard }) => clipboard.readText()));
+    assert.deepEqual(seal.parseInvite(inviteLink).hub, HUB);
+    if (SHOTS) await full.screenshot({ path: path.join(SHOTS, 'invite.png') });
+    await full.click('#closeSheet');
+    // Opening "Add a device" again shows this feed's pairing link, not the invite.
+    await full.click('#addDevice');
+    assert.equal(await full.textContent('#sheetTitle'), 'Add a device');
+    assert.equal(await full.isVisible('#startOver'), true);
+    await full.click('#closeSheet');
+    step('the host can make an invite link from the window');
+
     // ---- Escape keeps the draft; hub down: nothing is lost ----
     again('--throw');
     await until('the Throw box to show', () => visible('Throw'));
@@ -253,6 +272,40 @@ async function main() {
     await until('the draft to come back', async () => (await quick.inputValue('#text')) === 'must not be sent with a stale key');
     assert.equal((await hubItems()).length, 0, 'nothing was sent');
     step("after a reset elsewhere, throws are held back instead of sent with a key nobody else has");
+
+    // ---- with the invite link this computer gets a space of its own ----
+    again('--settings');
+    const settings2 = await windowFor('settings/index.html');
+    settings2.on('dialog', (d) => d.accept());
+    await settings2.waitForSelector('#paired:not([hidden])');
+    await settings2.click('#unpair');
+    await settings2.waitForSelector('#unpaired:not([hidden])');
+    await settings2.fill('#link', inviteLink);
+    await settings2.click('#pair');
+    await settings2.waitForSelector('#paired:not([hidden])');
+    const guest = JSON.parse(fs.readFileSync(path.join(profile, 'config.json'), 'utf8'));
+    assert.notEqual(guest.token, TOKEN);
+    assert.notEqual(guest.key, creds.key);
+    const page = await windowFor('fetch-app://page');
+    await page.waitForFunction(() => !document.getElementById('sheet').hidden, null, { timeout: 15000 });
+    assert.equal(await page.textContent('#sheetTitle'), 'Add a device', 'the new space opens Add a device');
+    await page.click('#closeSheet');
+    await page.waitForFunction(() => / of 500 MB used/.test(document.getElementById('policy').textContent));
+    assert.equal(await page.isVisible('#hostLine'), false, "a guest can't invite");
+    again('--throw');
+    await until('the Throw box to show', () => visible('Throw'));
+    await quick.fill('#text', 'in my own space');
+    await quick.press('#text', 'Enter');
+    const guestKey = seal.keyFromText(guest.key);
+    const guestItems = async () => (await (await fetch(`${HUB}/api/items`, { headers: { Authorization: `Bearer ${guest.token}` } })).json()).items
+      .map((it) => seal.openMeta(guestKey, Buffer.from(it.meta, 'base64')).meta);
+    await until('the item in the new space', async () => (await guestItems()).some((m) => m.text === 'in my own space'));
+    assert.equal((await hubItems()).length, 0, "nothing landed in the host's feed");
+    await page.waitForSelector('.item');
+    // The same invite link doesn't work twice.
+    const reused = await fetch(`${HUB}/api/spaces`, { method: 'POST', body: JSON.stringify({ invite: seal.parseInvite(inviteLink).code }) });
+    assert.equal(reused.status, 403);
+    step("an invite link in Settings makes a space of its own, apart from the host's feed");
 
     // Expected: the blocked probe of example.com above, and the live-update
     // stream breaking off when the test stops the hub.

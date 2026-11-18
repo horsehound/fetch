@@ -160,6 +160,9 @@
   .setup { position: fixed; inset: 0; background: var(--bg); display: grid; place-items: center; padding: 16px; z-index: 10; overflow-y: auto; }
   .setup-card { width: min(420px, 100%); display: grid; gap: 12px; }
   .setup h1 { font-size: 20px; margin: 10px 0 0; }
+  .setup section { display: grid; gap: 12px; }
+  .setup section + section { border-top: 1px solid var(--line); padding-top: 14px; margin-top: 4px; }
+  .setup section + section h1 { font-size: 16px; margin: 0; }
   .setup p { margin: 0; color: var(--muted); }
   .setup form { display: flex; gap: 8px; }
   .setup input { flex: 1; min-width: 0; border: 1px solid var(--line); background: var(--card); border-radius: 8px; padding: 9px 12px; font-family: var(--mono); font-size: 13px; }
@@ -217,7 +220,8 @@
   <footer>
     <div id="policy"></div>
     <div>End-to-end encrypted · key <span id="footFp"></span></div>
-    <div>This device shows up as <button id="rename" type="button"></button> · <button id="clear" type="button">Clear unpinned</button><span id="unpairWrap"> · <button id="unpair" type="button">Unpair this browser</button></span></div>
+    <div>This device shows up as <button id="rename" type="button"></button> · <button id="clear" type="button">Clear unpinned</button><span id="unpairWrap"> · <button id="unpair" type="button">Unpair this browser</button></span><span id="leaveWrap" hidden> · <button id="leave" type="button">Delete my space…</button></span></div>
+    <div id="hostLine" hidden>You run this hub · <button id="invite" type="button">Invite someone</button></div>
   </footer>
 </main>
 
@@ -225,16 +229,27 @@
   <div class="setup-card">
     <span class="mark">fetch</span>
     <p class="err" id="setupReason" hidden></p>
-    <h1>Pair this browser</h1>
-    <p>On a device that's already set up, open <b>Add a device</b> and copy the pairing link. Paste it here.</p>
-    <form id="pairForm">
-      <input id="pairLink" type="text" placeholder="fetchpair://…" autocomplete="off" spellcheck="false" aria-label="Pairing link">
-      <button class="btn primary" type="submit">Pair</button>
-    </form>
-    <div class="err" id="pairErr" role="alert"></div>
+    <section id="pairBox">
+      <h1 id="pairTitle">Pair this browser</h1>
+      <p>On a device that's already set up, open <b>Add a device</b> and copy the pairing link. Paste it here.</p>
+      <form id="pairForm">
+        <input id="pairLink" type="text" placeholder="fetchpair://…" autocomplete="off" spellcheck="false" aria-label="Pairing link">
+        <button class="btn primary" type="submit">Pair</button>
+      </form>
+      <div class="err" id="pairErr" role="alert"></div>
+    </section>
+    <section id="joinBox" hidden>
+      <h1 id="joinTitle">New here?</h1>
+      <p id="joinIntro"></p>
+      <form id="joinForm">
+        <input id="joinCode" type="text" placeholder="invite code" autocomplete="off" spellcheck="false" aria-label="Invite code">
+        <button class="btn primary" id="joinButton" type="submit">Make my space</button>
+      </form>
+      <div class="err" id="joinErr" role="alert"></div>
+    </section>
     <details id="firstDevice">
-      <summary>Setting up the first device?</summary>
-      <p>Enter the token the hub printed when it started. This browser creates the encryption key, and you add your other devices from here.</p>
+      <summary>Running this hub?</summary>
+      <p>Enter the token it printed when it started. This browser creates the encryption key for your own feed, and you add your other devices from here.</p>
       <form id="initForm">
         <input id="initToken" type="password" placeholder="token" autocomplete="off" aria-label="Access token">
         <button class="btn" type="submit">Set up</button>
@@ -252,8 +267,8 @@
     <p id="sheetIntro">Scan this with the iPhone or Android camera. On a computer, copy the link into the Fetch app, a browser, or <code>fetch pair</code>.</p>
     <canvas class="qr" id="qr" aria-label="Pairing QR code"></canvas>
     <button class="btn primary" id="copyLink" type="button">Copy pairing link</button>
-    <p class="warn">Whoever has this link can read and change everything you send. Only use it for your own devices.</p>
-    <p class="fp">Key <b id="sheetFp"></b>, the same on every paired device.</p>
+    <p class="warn" id="sheetWarn">Whoever has this link can read and change everything you send. Only use it for your own devices.</p>
+    <p class="fp" id="sheetFpLine">Key <b id="sheetFp"></b>, the same on every paired device.</p>
     <div class="sheet-foot">
       <button class="link danger" id="startOver" type="button">Start over with a new key…</button>
       <button class="btn" id="closeSheet" type="button">Done</button>

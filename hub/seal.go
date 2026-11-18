@@ -334,6 +334,27 @@ func (p Pairing) Link() string {
 	return "fetchpair://v1?" + q.Encode()
 }
 
+// InviteLink is what the host sends someone to give them a space: the hub's
+// own address, so it opens the web page in a browser, with the code after #
+// (which browsers never send to the hub, so it stays out of its logs).
+func InviteLink(hub, code string) string {
+	return strings.TrimRight(hub, "/") + "/#invite=" + url.QueryEscape(code)
+}
+
+// ParseInvite reads an invite link. ok is false for anything else.
+func ParseInvite(link string) (hub, code string, ok bool) {
+	u, err := url.Parse(strings.TrimSpace(link))
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return "", "", false
+	}
+	q, err := url.ParseQuery(u.Fragment)
+	if err != nil || q.Get("invite") == "" {
+		return "", "", false
+	}
+	u.Fragment, u.RawFragment, u.RawQuery = "", "", ""
+	return strings.TrimRight(u.String(), "/"), q.Get("invite"), true
+}
+
 func ParsePairing(link string) (Pairing, error) {
 	var p Pairing
 	u, err := url.Parse(strings.TrimSpace(link))

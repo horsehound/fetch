@@ -98,6 +98,12 @@ struct SettingsView: View {
                 .autocorrectionDisabled()
             Button("Pair") {
                 run {
+                    if let invite = Seal.Invite(link: link) {
+                        try await model.join(invite)
+                        link = ""
+                        showAddDevice = true
+                        return
+                    }
                     let pairing = try Seal.Pairing(link: link)
                     if let problem = await model.pair(pairing) { throw HubError.server(0, problem) }
                     link = ""
@@ -107,7 +113,7 @@ struct SettingsView: View {
         } header: {
             Text("Pair with a link")
         } footer: {
-            Text("On a device that's set up, open Add a device. Scan its QR code with the Camera app, or copy the pairing link and paste it here.")
+            Text("On a device that's set up, open Add a device. Scan its QR code with the Camera app, or copy the pairing link and paste it here. An invite link from someone who runs a hub works too.")
         }
 
         Section {
@@ -116,7 +122,7 @@ struct SettingsView: View {
                 .textContentType(.URL)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
-            TextField("Token", text: $token)
+            TextField("Token or invite code", text: $token)
                 .font(.body.monospaced())
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
@@ -126,14 +132,14 @@ struct SettingsView: View {
                     showAddDevice = true
                 }
             }
-            .disabled(server.isEmpty || token.isEmpty || busy)
+            .disabled(server.isEmpty || busy)
             if canStartOver {
                 Button("Start over with a new key…", role: .destructive) { confirmStartOver = true }
             }
         } header: {
-            Text("First device")
+            Text("New here, or your own hub?")
         } footer: {
-            Text("Enter the address and token the hub printed when it started. This iPhone creates the encryption key, and you add your other devices from here.")
+            Text("For your own hub, enter the token it printed when it started. With an invite code, or on a public hub (leave the code empty), you get a space of your own. Either way this iPhone creates the encryption key, and you add your other devices from here.")
         }
     }
 

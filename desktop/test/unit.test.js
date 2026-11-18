@@ -238,3 +238,8 @@ test('cleanEnv drops the AppImage mount', () => {
 test('ownArgs keeps only Fetch flags', () => {
   assert.deepEqual(version.ownArgs(['/opt/Fetch/fetch-desktop', '--enable-features=X', '--no-sandbox', '--throw']), ['--no-sandbox', '--throw']);
 });
+
+test('invite links', () => {
+  for (const inv of V.invites) assert.deepEqual(seal.parseInvite(inv.link), { hub: inv.hub, code: inv.code }, inv.link);
+  for (const s of V.not_invites) assert.equal(seal.parseInvite(s), null, s);
+});

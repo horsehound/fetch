@@ -13,7 +13,7 @@
   "scripts": {
     "start": "electron .",
     "test": "node --test test/unit.test.js",
-    "test:e2e": "node test/e2e.js",
+    "test:e2e": "node test/e2e.js && node test/web.e2e.js",
     "dist": "electron-builder --publish never"
   },
   "devDependencies": {

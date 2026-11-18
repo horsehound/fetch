@@ -66,6 +66,13 @@ final class FeedModel: ObservableObject {
         pendingPairing = pairing
     }
 
+    /// Makes a space of your own with an invite link; this iPhone is its
+    /// first device.
+    func join(_ invite: Seal.Invite) async throws {
+        try await setUp(server: invite.hub, token: invite.code, startOver: false)
+        flash("Your space is ready")
+    }
+
     /// Joins with a pairing link. Returns an error to show, or nil.
     func pair(_ pairing: Seal.Pairing) async -> String? {
         guard let base = URL(string: pairing.hub) else { return Seal.Failure.incompleteLink.localizedDescription }
@@ -91,20 +98,29 @@ final class FeedModel: ObservableObject {
         return nil
     }
 
-    /// The first device: creates the key for a hub nobody has set up. With
-    /// startOver, a hub that already has a key is wiped first.
-    func setUp(server: String, token: String, startOver: Bool) async throws {
+    /// The first device of a feed: creates the key. The code is the hub's
+    /// token (your own hub) or an invite code (someone else's); a public hub
+    /// needs neither. With startOver, a feed that already has a key is wiped
+    /// first.
+    func setUp(server: String, token code: String, startOver: Bool) async throws {
         guard let hub = Seal.normalizeURL(server), let base = URL(string: hub) else {
             throw HubError.server(0, "That address doesn't look right.")
         }
         let key = Seal.Key.new()
-        let client = HubClient(base: base, token: token.trimmingCharacters(in: .whitespacesAndNewlines), key: key, device: config.device)
-        if startOver {
-            try await client.resetHub()
+        var token = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        if token.isEmpty {
+            token = try await HubClient.join(base, code: "")
+        } else if startOver {
+            try await HubClient(base: base, token: token, key: key, device: config.device).resetHub()
         } else {
-            let existing = try await client.hubCheck()
-            if !existing.isEmpty { throw HubError.alreadySetUp }
+            do {
+                let existing = try await HubClient(base: base, token: token, key: key, device: config.device).hubCheck()
+                if !existing.isEmpty { throw HubError.alreadySetUp }
+            } catch HubError.wrongToken {
+                token = try await HubClient.join(base, code: token) // not a token here: an invite code
+            }
         }
+        let client = HubClient(base: base, token: token, key: key, device: config.device)
         try await client.claim()
         var next = config
         next.server = hub

@@ -254,6 +254,17 @@ type vectorFile struct {
 	// keep:<n> (keep only the first n bytes of the data), append_zero (add a
 	// 0 byte to the data), swap_first_chunks (swap data chunks 0 and 1).
 	Corrupt []vectorCorruption `json:"corrupt"`
+	// Invite links: what the host sends someone so they can make a space.
+	// Every client reads the hub address and code out of these, and treats
+	// each of not_invites as something else (a pairing link, or nothing).
+	Invites    []vectorInvite `json:"invites"`
+	NotInvites []string       `json:"not_invites"`
+}
+
+type vectorInvite struct {
+	Link string `json:"link"`
+	Hub  string `json:"hub"`
+	Code string `json:"code"`
 }
 
 func makeVectors() vectorFile {
@@ -306,6 +317,12 @@ func makeVectors() vectorFile {
 		{"one byte appended", 4, "append_zero"},
 		{"first two chunks swapped", 4, "swap_first_chunks"},
 	}
+	v.Invites = []vectorInvite{
+		{InviteLink("https://fetch.example.com", "abcd-efgh-jkmn"), "https://fetch.example.com", "abcd-efgh-jkmn"},
+		{InviteLink(v.Hub, "2345-6789-abcd"), v.Hub, "2345-6789-abcd"},
+		{"  https://fetch.example.com/#invite=abcd-efgh-jkmn\n", "https://fetch.example.com", "abcd-efgh-jkmn"},
+	}
+	v.NotInvites = []string{v.Link, "https://fetch.example.com/", "https://fetch.example.com/#other=1", "abcd-efgh-jkmn", "fetchpair://v1?hub=x&invite=abcd"}
 	return v
 }
 
@@ -325,6 +342,17 @@ func TestVectors(t *testing.T) {
 	have, err := os.ReadFile(vectorPath)
 	if err != nil || !bytes.Equal(have, b) {
 		t.Fatalf("%s is out of date (run with FETCH_WRITE_VECTORS=1): %v", vectorPath, err)
+	}
+	for _, inv := range want.Invites {
+		hub, code, ok := ParseInvite(inv.Link)
+		if !ok || hub != inv.Hub || code != inv.Code {
+			t.Errorf("invite %q: got %q %q %v", inv.Link, hub, code, ok)
+		}
+	}
+	for _, s := range want.NotInvites {
+		if _, _, ok := ParseInvite(s); ok {
+			t.Errorf("%q was taken for an invite link", s)
+		}
 	}
 	k, _ := ParseKey(want.Key)
 	for _, it := range want.Items {

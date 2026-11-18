@@ -24,6 +24,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -213,6 +215,38 @@ class HubDeviceTest {
         ActivityScenario.launch(MainActivity::class.java).use {
             waitFor { compose.onAllNodesWithText("Locked with a different key", substring = true).fetchSemanticsNodes().isNotEmpty() }
             screenshot("locked")
+        }
+    }
+
+    /** Makes an invite code as whoever runs the hub. */
+    private fun invite(hub: String): String {
+        val conn = URL("$hub/api/invites").openConnection() as HttpURLConnection
+        conn.requestMethod = "POST"
+        conn.setRequestProperty("Authorization", "Bearer ${arguments.getString("hubToken")}")
+        conn.doOutput = true
+        conn.outputStream.use { it.write("{}".toByteArray()) }
+        assertEquals(201, conn.responseCode)
+        val answer = conn.inputStream.use { it.readBytes().decodeToString() }
+        return (Json.parse(answer) as Map<*, *>)["code"] as String
+    }
+
+    @Test
+    fun anInviteLinkMakesASpaceOfItsOwn() {
+        val hub = Seal.normalizeUrl(arguments.getString("hubUrl")!!)!!
+        val invite = Seal.Invite.parseOrNull("$hub/#invite=${invite(hub)}")!!
+        val guestKey = Seal.Key.new()
+        runBlocking {
+            client.sendText("only on the host's feed")
+            val token = HubClient.to(invite.hub, "", guestKey, "Guest phone")!!.join(invite.code)
+            val guest = HubClient.to(invite.hub, token, guestKey, "Guest phone")!!
+            assertEquals("", guest.hubCheck()) // a new space: this phone makes the key
+            guest.claim()
+            guest.sendText("in a space of its own")
+            assertEquals(listOf("in a space of its own"), guest.list().map { it.text })
+            assertTrue(client.list().none { it.text == "in a space of its own" })
+            // An invite works once.
+            val again = runCatching { HubClient.to(invite.hub, "", Seal.Key.new(), "x")!!.join(invite.code) }.exceptionOrNull()
+            assertTrue("got $again", again is HubError.Server && again.code == 403)
         }
     }
 

@@ -24,14 +24,22 @@ var version = "1.0.0"
 const usage = `fetch - move text, pictures and files between your devices
 
   fetch serve [-addr :8787] [-data ./data] [-token ...] [-ttl 168h]
+              [-mode invite|public|private] [-space-mb 500] [-max-spaces 50]
               [-cert cert.pem -key key.pem]
         run the hub; open the printed address in a browser
   fetch update [-check]             install the newest release and restart the hub
   fetch version                     print this version
 
-  fetch pair '<link>'               join with a pairing link from another device
-  fetch init <hub-url> <token>      set up a new hub from here (creates the key)
+  fetch pair '<link>'               join with a pairing link from another device,
+                                    or make your own space with an invite link
+  fetch init <hub-url> [<token or invite code>]
+                                    set up the first device here (creates the key);
+                                    leave out the code on a public hub
   fetch link                        print the pairing link for another device
+
+  fetch invite [-days 7] [-mb 500]  make an invite link for someone else (host only)
+  fetch spaces                      list the spaces on your hub (host only)
+  fetch spaces delete <id>          delete a space and everything in it
   fetch send <file>...              send files or pictures
   fetch send -t "some text"         send text
   <command> | fetch send            send whatever is piped in
@@ -63,6 +71,10 @@ func main() {
 		runInit(args)
 	case "link":
 		fmt.Println(loadClient().Link())
+	case "invite":
+		runInvite(args)
+	case "spaces":
+		runSpaces(args)
 	case "send":
 		runSend(args)
 	case "latest":
@@ -197,6 +209,10 @@ func runPair(args []string) {
 	if len(args) != 1 {
 		die("usage: fetch pair '<link>'   (quote it: the link contains & characters)")
 	}
+	if hub, code, ok := ParseInvite(args[0]); ok {
+		joinWithCode(hub, code)
+		return
+	}
 	p, err := ParsePairing(args[0])
 	if err != nil {
 		die("%v", err)
@@ -213,22 +229,174 @@ func runPair(args []string) {
 	fmt.Printf("paired with %s (key %s)\n", c.Hub, fingerprint(c.Key))
 }
 
+// runInit sets up the first device of a feed. The code is either the hub's
+// token (your own hub) or an invite code (someone else's); a public hub needs
+// neither.
 func runInit(args []string) {
-	if len(args) != 2 {
-		die("usage: fetch init <hub-url> <token>")
+	if len(args) < 1 || len(args) > 2 {
+		die("usage: fetch init <hub-url> [<token or invite code>]")
 	}
+	hub, code := normalizeURL(args[0]), ""
+	if len(args) == 2 {
+		code = strings.TrimSpace(args[1])
+	}
+	if code != "" {
+		c := client{Pairing{Hub: hub, Token: code}}
+		if check, ok := c.tryCheck(); ok {
+			if check != "" {
+				die("this hub already has a key. Pair from a device that has it: open \"Add a device\" there and run fetch pair '<link>'")
+			}
+			c.firstDevice()
+			return
+		}
+		// Not a token this hub knows: maybe an invite code.
+	}
+	joinWithCode(hub, code)
+}
+
+// joinWithCode makes a new space on a hub (with an invite code, or none on a
+// public hub) and sets this machine up as its first device.
+func joinWithCode(hub, code string) {
+	body, _ := json.Marshal(map[string]string{"invite": code})
+	resp, err := http.Post(hub+"/api/spaces", "application/json", bytes.NewReader(body))
+	if err != nil {
+		die("cannot reach the hub at %s: %v", hub, err)
+	}
+	defer resp.Body.Close()
+	msg, _ := io.ReadAll(io.LimitReader(resp.Body, 1000))
+	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusMethodNotAllowed {
+		die("%s doesn't hand out spaces (update the hub?)", hub)
+	}
+	if resp.StatusCode != http.StatusCreated {
+		die("%s", strings.TrimSpace(string(msg)))
+	}
+	var out struct {
+		Token   string `json:"token"`
+		LimitMB int64  `json:"limit_mb"`
+	}
+	if json.Unmarshal(msg, &out) != nil || out.Token == "" {
+		die("unexpected answer from %s", hub)
+	}
+	c := client{Pairing{Hub: hub, Token: out.Token}}
+	c.firstDevice()
+	if out.LimitMB > 0 {
+		fmt.Printf("\nYour space holds up to %d MB.\n", out.LimitMB)
+	}
+}
+
+// firstDevice creates the key, records its check on the hub and saves the
+// pairing.
+func (c client) firstDevice() {
 	key, err := NewKey()
 	if err != nil {
 		die("%v", err)
 	}
-	c := client{Pairing{Hub: normalizeURL(args[0]), Token: strings.TrimSpace(args[1]), Key: key}}
-	if c.hubCheck() != "" {
-		die("this hub already has a key. Pair from a device that has it: open \"Add a device\" there and run fetch pair '<link>'")
-	}
+	c.Key = key
 	c.claimHub()
 	c.save()
 	fmt.Printf("created a new key for %s (key %s)\n\nAdd your other devices with this pairing link. It unlocks everything: keep it to yourself.\n\n%s\n",
 		c.Hub, fingerprint(c.Key), c.Link())
+}
+
+// tryCheck is hubCheck for a token that may not be one: ok is false if the
+// hub refuses it.
+func (c client) tryCheck() (check string, ok bool) {
+	req, _ := http.NewRequest("GET", c.Hub+"/api/vault", nil)
+	req.Header.Set("Authorization", "Bearer "+c.Token)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		die("cannot reach the hub at %s: %v", c.Hub, err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode == http.StatusUnauthorized {
+		return "", false
+	}
+	return c.hubCheck(), true
+}
+
+func runInvite(args []string) {
+	fs := flag.NewFlagSet("invite", flag.ExitOnError)
+	days := fs.Int("days", 7, "how many days the code works")
+	mb := fs.Int64("mb", 0, "storage for their space in MB (default: the hub's -space-mb)")
+	fs.Parse(args)
+	c := loadClient()
+	body, _ := json.Marshal(map[string]any{"days": *days, "mb": *mb})
+	resp := c.do("POST", "/api/invites", "application/json", bytes.NewReader(body))
+	defer resp.Body.Close()
+	var inv struct {
+		Code    string `json:"code"`
+		Expires int64  `json:"expires"`
+		LimitMB int64  `json:"limit_mb"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&inv); err != nil {
+		die("unexpected answer from the hub: %v", err)
+	}
+	room := "no storage limit"
+	if inv.LimitMB > 0 {
+		room = fmt.Sprintf("%d MB", inv.LimitMB)
+	}
+	fmt.Printf("invite  %s\n        works once, until %s; %s\n\n%s\n\nSend them the link. They open it in a browser, or paste it into the Fetch app\nor `fetch pair`. They get a space of their own, encrypted with a key only\ntheir devices have: you can't read it.\n",
+		inv.Code, time.UnixMilli(inv.Expires).Format("Mon 2 Jan 15:04"), room, InviteLink(c.Hub, inv.Code))
+}
+
+func runSpaces(args []string) {
+	c := loadClient()
+	if len(args) == 2 && args[0] == "delete" {
+		c.do("DELETE", "/api/spaces/"+args[1], "", nil).Body.Close()
+		fmt.Printf("deleted space %s and everything in it\n", args[1])
+		return
+	}
+	if len(args) != 0 {
+		die("usage: fetch spaces  |  fetch spaces delete <id>")
+	}
+	resp := c.do("GET", "/api/spaces", "", nil)
+	defer resp.Body.Close()
+	var out struct {
+		Mode      string      `json:"mode"`
+		MaxSpaces int         `json:"max_spaces"`
+		Own       spaceInfo   `json:"own"`
+		Spaces    []spaceInfo `json:"spaces"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		die("unexpected answer from the hub: %v", err)
+	}
+	kind := map[string]string{modePrivate: "Private hub", modeInvite: "Invite-only hub", modePublic: "Public hub"}[out.Mode]
+	fmt.Printf("%s. Your own feed: %s, %s.\n\n", kind, plural(out.Own.Items, "item"), humanBytes(out.Own.UsedBytes))
+	if len(out.Spaces) == 0 {
+		fmt.Println("No other spaces yet. Make an invite with: fetch invite")
+		return
+	}
+	fmt.Printf("%-14s %-12s %-12s %-20s %s\n", "SPACE", "MADE", "LAST USED", "STORAGE", "ITEMS")
+	for _, sp := range out.Spaces {
+		storage := humanBytes(sp.UsedBytes)
+		if sp.LimitMB > 0 {
+			storage += fmt.Sprintf(" of %d MB", sp.LimitMB)
+		}
+		fmt.Printf("%-14s %-12s %-12s %-20s %d\n", sp.ID, time.UnixMilli(sp.Created).Format("2 Jan 2006"),
+			time.UnixMilli(sp.LastUsed).Format("2 Jan 2006"), storage, sp.Items)
+	}
+	if out.MaxSpaces > 0 {
+		fmt.Printf("\n%d of %d spaces in use.\n", len(out.Spaces), out.MaxSpaces)
+	}
+}
+
+func plural(n int, word string) string {
+	if n == 1 {
+		return "1 " + word
+	}
+	return fmt.Sprintf("%d %ss", n, word)
+}
+
+func humanBytes(n int64) string {
+	switch {
+	case n >= 1<<30:
+		return fmt.Sprintf("%.1f GB", float64(n)/(1<<30))
+	case n >= 1<<20:
+		return fmt.Sprintf("%.1f MB", float64(n)/(1<<20))
+	case n >= 1<<10:
+		return fmt.Sprintf("%d KB", n>>10)
+	}
+	return fmt.Sprintf("%d bytes", n)
 }
 
 // fingerprint is a short form of the key's check, to compare devices by eye.
