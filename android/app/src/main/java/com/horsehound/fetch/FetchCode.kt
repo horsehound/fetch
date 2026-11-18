@@ -150,8 +150,8 @@ object FetchCode {
 
     // Go's unicode.IsSpace.
     private fun isGoSpace(c: Char) = c == '\t' || c == '\n' || c == '\u000b' || c == '\u000c' || c == '\r' ||
-        c == ' ' || c == '\u0085' || c == ' ' || c == ' ' || c in ' '..' ' ||
-        c == ' ' || c == ' ' || c == ' ' || c == ' ' || c == '　'
+        c == ' ' || c == '\u0085' || c == '\u00a0' || c == '\u1680' || c in '\u2000'..'\u200a' ||
+        c == '\u2028' || c == '\u2029' || c == '\u202f' || c == '\u205f' || c == '\u3000'
 
     internal fun trimSpace(s: String): String {
         var a = 0
