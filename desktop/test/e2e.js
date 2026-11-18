@@ -146,6 +146,7 @@ async function main() {
     assert.equal(await full.evaluate(() => window.isSecureContext), true);
     assert.equal(await full.locator('.item:has(.shot) .act', { hasText: /^Copy$/ }).count(), 1, 'pictures get a Copy button');
     await full.waitForFunction(() => [...document.images].every((i) => i.complete && i.naturalWidth > 0));
+    await full.waitForFunction(() => document.getElementById('connText').textContent === 'Connected');
     // The page may only run its own scripts and talk only to the hub.
     const blocked = await full.evaluate(async () => { try { await fetch('https://example.com/'); return false; } catch { return true; } });
     assert.ok(blocked, 'the page could reach another address');
@@ -181,6 +182,7 @@ async function main() {
     await until('Escape to close the box', async () => !(await visible('Throw')));
     hub.kill();
     await until('the hub to stop', () => fetch(HUB).then(() => false, () => true));
+    await full.waitForFunction(() => document.getElementById('connText').textContent === 'Offline');
     again('--throw');
     await until('the Throw box to show', () => visible('Throw'));
     await quick.fill('#text', 'do not lose me');
@@ -193,7 +195,8 @@ async function main() {
     await until('the Throw box to show', () => visible('Throw'));
     await quick.press('#text', 'Enter');
     await until('the retried item', async () => (await hubItems()).some((i) => i.text === 'do not lose me'));
-    step('when the hub is unreachable the draft is put back, and retrying works');
+    await full.waitForFunction(() => document.getElementById('connText').textContent === 'Connected');
+    step('when the hub is unreachable the window says Offline, the draft is put back, and retrying works');
 
     // ---- settings: unpair, a bad link, then pair with the real one ----
     again('--settings');

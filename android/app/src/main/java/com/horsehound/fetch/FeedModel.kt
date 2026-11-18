@@ -34,6 +34,8 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 
+enum class Connection { Connecting, Connected, Offline }
+
 /** The feed and everything the screen can do with it. */
 class FeedModel(private val app: Application) : AndroidViewModel(app) {
     var items by mutableStateOf(emptyList<Item>())
@@ -41,6 +43,14 @@ class FeedModel(private val app: Application) : AndroidViewModel(app) {
     var config by mutableStateOf(HubConfig.load(app))
         private set
     var problem by mutableStateOf<String?>(null)
+        private set
+
+    /** Whether the live connection to the hub is up, for the status pill. */
+    var connection by mutableStateOf(Connection.Connecting)
+        private set
+
+    /** Uploads in flight. */
+    var sending by mutableStateOf(0)
         private set
     var refreshing by mutableStateOf(false)
         private set
@@ -221,6 +231,7 @@ class FeedModel(private val app: Application) : AndroidViewModel(app) {
                 try {
                     // "hello" only confirms the connection; the feed was just loaded.
                     client.events().collect { event ->
+                        connection = Connection.Connected // the hub greets with "hello" at once
                         if (event != "hello") refresh()
                     }
                 } catch (e: CancellationException) {
@@ -228,6 +239,7 @@ class FeedModel(private val app: Application) : AndroidViewModel(app) {
                 } catch (e: Exception) {
                     // Dropped connections are routine (sleep, Wi-Fi changes); retry below.
                 }
+                connection = Connection.Offline
                 delay(3000)
             }
         }
@@ -236,6 +248,7 @@ class FeedModel(private val app: Application) : AndroidViewModel(app) {
     fun stop() {
         liveJob?.cancel()
         liveJob = null
+        connection = Connection.Connecting
     }
 
     suspend fun refresh() {
@@ -268,6 +281,7 @@ class FeedModel(private val app: Application) : AndroidViewModel(app) {
             problem = HubError.NotSetUp().message
             return
         }
+        if (sending) this.sending++
         try {
             if (sending) client.verify()
             work(client)
@@ -276,6 +290,8 @@ class FeedModel(private val app: Application) : AndroidViewModel(app) {
             throw e
         } catch (e: Exception) {
             problem = e.message ?: "Something went wrong."
+        } finally {
+            if (sending) this.sending--
         }
     }
 

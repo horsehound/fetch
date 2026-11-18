@@ -113,7 +113,13 @@ fun FeedScreen(
     }
 
     Scaffold(
-        topBar = { TopBar(onSettings, onClear = { confirmClear = true }) },
+        topBar = {
+            TopBar(
+                status = { if (model.isSetUp) StatusPill(model.connection, model.sending, Modifier.padding(start = 12.dp)) },
+                onSettings = onSettings,
+                onClear = { confirmClear = true },
+            )
+        },
         bottomBar = { Composer(model, draft) },
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
@@ -292,10 +298,11 @@ private fun Notice(
 // ---- bars ----
 
 @Composable
-private fun TopBar(onSettings: () -> Unit, onClear: () -> Unit) {
+private fun TopBar(status: @Composable () -> Unit, onSettings: () -> Unit, onClear: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
     CenterAlignedTopAppBar(
         title = { Text("Fetch", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) },
+        navigationIcon = status,
         actions = {
             Box {
                 IconButton(onClick = { menu = true }) {

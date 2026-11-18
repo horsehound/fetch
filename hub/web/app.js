@@ -282,7 +282,12 @@ async function sendFile(file, keepName = true) {
   await upload({ kind, name, mime, size: file.size }, file);
 }
 
-const track = (promise) => promise.catch(fail);
+// Uploads in flight, shown in the connection pill.
+let sending = 0;
+function track(promise) {
+  sending++; paintConn();
+  return promise.catch(fail).finally(() => { sending--; paintConn(); });
+}
 
 const draft = $('draft');
 function fitDraft() {
@@ -583,7 +588,20 @@ setInterval(() => { for (const li of nodes.values()) paint(li, li._item); }, 300
 // Server-sent events, read with fetch so the token can travel in a header.
 
 let listening = null;
+let conn = 'connecting'; // connecting, connected or offline
 function stopListening() { if (listening) { listening.abort(); listening = null; } }
+
+function setConn(state) { conn = state; paintConn(); }
+function paintConn() {
+  const state = sending ? 'sending' : conn;
+  $('conn').dataset.state = state;
+  $('connText').textContent = {
+    sending: sending > 1 ? 'Sending ' + sending : 'Sending',
+    connected: 'Connected',
+    offline: 'Offline',
+    connecting: 'Connecting',
+  }[state];
+}
 
 function listen() {
   stopListening();
@@ -594,6 +612,8 @@ function listen() {
       try {
         const res = await fetch((cfg.hub || '') + '/api/events', { headers: { Authorization: 'Bearer ' + cfg.token }, signal: ctl.signal });
         if (res.status === 401) { locked(); return; }
+        if (!res.ok) throw new Error(res.statusText);
+        setConn('connected');
         const reader = res.body.getReader();
         const text = new TextDecoder();
         let buf = '';
@@ -609,7 +629,9 @@ function listen() {
           }
         }
       } catch { /* dropped: retry below */ }
-      if (!ctl.signal.aborted) await new Promise((r) => setTimeout(r, 2000));
+      if (ctl.signal.aborted) return;
+      setConn('offline');
+      await new Promise((r) => setTimeout(r, 2000));
     }
   })();
 }

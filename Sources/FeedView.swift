@@ -122,6 +122,9 @@ struct FeedView: View {
     // MARK: bars
 
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            StatusPill(connection: model.connection, sending: model.sending)
+        }
         ToolbarItem(placement: .topBarTrailing) {
             Menu {
                 Button("Settings", systemImage: "gearshape") { showSettings = true }

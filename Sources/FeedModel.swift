@@ -9,11 +9,19 @@ struct SharedFile: Identifiable {
     let url: URL
 }
 
+enum Connection {
+    case connecting, connected, offline
+}
+
 @MainActor
 final class FeedModel: ObservableObject {
     @Published private(set) var items: [Item] = []
     @Published private(set) var config = HubConfig.load()
     @Published private(set) var problem: String?
+    /// Whether the live connection to the hub is up, for the status pill.
+    @Published private(set) var connection: Connection = .connecting
+    /// Uploads in flight.
+    @Published private(set) var sending = 0
     @Published var toast: String?
     @Published var sharing: SharedFile?
     /// A pairing link opened from outside (the Camera app, a tapped link),
@@ -163,6 +171,7 @@ final class FeedModel: ObservableObject {
                 await self?.refresh()
                 do {
                     let stream = try await client.events()
+                    self?.connection = .connected
                     // "hello" only confirms the connection; the feed was just loaded.
                     for try await line in stream.lines where line.hasPrefix("data:") && !line.contains("hello") {
                         await self?.refresh()
@@ -170,6 +179,7 @@ final class FeedModel: ObservableObject {
                 } catch {
                     // Dropped connections are routine (sleep, Wi-Fi changes); retry below.
                 }
+                if !Task.isCancelled { self?.connection = .offline }
                 try? await Task.sleep(nanoseconds: 3_000_000_000)
             }
         }
@@ -178,6 +188,7 @@ final class FeedModel: ObservableObject {
     func stop() {
         liveTask?.cancel()
         liveTask = nil
+        connection = .connecting
     }
 
     func refresh() async {
@@ -194,11 +205,13 @@ final class FeedModel: ObservableObject {
 
     // MARK: sending
 
-    private func attempt(_ work: (HubClient) async throws -> Void) async {
+    private func attempt(sending: Bool = false, _ work: (HubClient) async throws -> Void) async {
         guard let client else {
             problem = HubError.notSetUp.localizedDescription
             return
         }
+        if sending { self.sending += 1 }
+        defer { if sending { self.sending -= 1 } }
         do {
             try await work(client)
             problem = nil
@@ -209,7 +222,7 @@ final class FeedModel: ObservableObject {
 
     func send(text: String) async {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        await attempt { client in
+        await attempt(sending: true) { client in
             try await client.verify() // never send with a key the other devices don't have
             try await client.sendText(text)
         }
@@ -217,7 +230,7 @@ final class FeedModel: ObservableObject {
     }
 
     func send(image data: Data) async {
-        await attempt { client in
+        await attempt(sending: true) { client in
             try await client.verify()
             // HEIC to JPEG conversion is slow enough to keep off the main thread.
             let prepared = await Task.detached(priority: .userInitiated) { ImagePrep.prepare(data) }.value
