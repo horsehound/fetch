@@ -41,6 +41,10 @@ jobs:
         with:
           node-version: 22
 
+      # Invisible and look-alike characters hide changes in a review.
+      - name: Check for hidden characters
+        run: python3 tools/check-hidden-unicode.py
+
       # The web page's encryption and code detection, against the same
       # vectors and corpus as every other client.
       - name: Test the web page's scripts
