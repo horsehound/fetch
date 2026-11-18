@@ -286,3 +286,17 @@ jobs:
           gh release create "v$APP_VERSION" out/* \
             --title "Fetch $APP_VERSION" \
             --notes "$(git log -1 --pretty=%s)"
+
+      # Tells the houndapps SideStore source to pick up this release now
+      # instead of on its hourly schedule, which GitHub often delays by hours.
+      # Needs a token that may write to horsehound/houndapps in the
+      # HOUNDAPPS_TOKEN secret; without one the source still catches up later.
+      - name: Update the SideStore source
+        env:
+          GH_TOKEN: ${{ secrets.HOUNDAPPS_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::notice::No HOUNDAPPS_TOKEN secret; the SideStore source updates on its own schedule."
+            exit 0
+          fi
+          gh api -X POST repos/horsehound/houndapps/dispatches -f event_type=release
