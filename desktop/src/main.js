@@ -8,12 +8,14 @@ const {
   app, BrowserWindow, Menu, Notification, Tray,
   globalShortcut, ipcMain, nativeImage, protocol, screen, session, shell,
 } = require('electron');
+const { spawn } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const config = require('./config');
 const hub = require('./hub');
 const seal = require('./seal');
+const version = require('./version');
 
 const APP_ID = 'com.horsehound.fetch';
 const PAGE_SCHEME = 'fetch-app';
@@ -40,12 +42,37 @@ let settings = null;
 let quitting = false;
 let registeredHotkey = '';
 
-if (!app.requestSingleInstanceLock()) {
+// Which copy this is: a copy still running in the tray from before an update
+// sees this and steps aside (see handOver).
+const me = { version: app.getVersion(), exe: process.env.APPIMAGE || process.execPath };
+
+if (!app.requestSingleInstanceLock(me)) {
   // Another copy is running; it receives our arguments (see 'second-instance').
   app.quit();
 } else {
-  app.on('second-instance', (_event, argv) => handleArgs(argv));
+  app.on('second-instance', (_event, argv, cwd, other) => {
+    if (app.isPackaged && other && version.isNewer(other.version, me.version)) handOver(other, argv, cwd);
+    else handleArgs(argv);
+  });
   app.whenReady().then(start);
+}
+
+// A newer copy was started while this one was still running: the app was
+// updated underneath it. Without this, the new copy would just pass its
+// arguments here and quit, and the hotkey would keep running the old code.
+// So this copy lets go of everything and starts the new one in its place.
+function handOver(other, argv, cwd) {
+  console.log(`Fetch ${other.version} was started; handing over from ${me.version}.`);
+  quitting = true;
+  globalShortcut.unregisterAll();
+  if (tray) { tray.destroy(); tray = null; }
+  app.releaseSingleInstanceLock();
+  try {
+    spawn(other.exe, version.ownArgs(argv), { cwd, detached: true, stdio: 'ignore', env: version.cleanEnv(process.env) }).unref();
+  } catch (err) {
+    console.error(`Couldn't start ${other.exe}:`, err);
+  }
+  app.quit();
 }
 
 function start() {
@@ -98,6 +125,7 @@ function createQuick() {
     skipTaskbar: true,
     alwaysOnTop: true,
     title: 'Throw',
+    icon: appIcon(),
     webPreferences: {
       preload: path.join(__dirname, 'quick', 'preload.js'),
       contextIsolation: true,
@@ -162,7 +190,7 @@ function showQuickForRetry() {
 
 function notify(title, body, onClick) {
   if (!Notification.isSupported()) return;
-  const n = new Notification({ title, body });
+  const n = new Notification({ title, body, icon: appIcon() });
   if (onClick) n.on('click', onClick);
   n.show();
 }
@@ -408,6 +436,7 @@ function rebuildTrayMenu() {
     { type: 'separator' },
     { label: 'Settings…', click: showSettings },
     { type: 'separator' },
+    { label: `Fetch ${app.getVersion()}`, enabled: false },
     { label: 'Quit Fetch', click: () => app.quit() },
   ]));
 }
