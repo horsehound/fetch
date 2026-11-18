@@ -117,7 +117,12 @@ final class FeedModel: ObservableObject {
                 let existing = try await HubClient(base: base, token: token, key: key, device: config.device).hubCheck()
                 if !existing.isEmpty { throw HubError.alreadySetUp }
             } catch HubError.wrongToken {
-                token = try await HubClient.join(base, code: token) // not a token here: an invite code
+                // Not a token here: maybe an invite code.
+                do {
+                    token = try await HubClient.join(base, code: token)
+                } catch HubError.server(403, _) {
+                    throw HubError.server(403, "The hub didn't accept that as its token or as an invite code.")
+                }
             }
         }
         let client = HubClient(base: base, token: token, key: key, device: config.device)

@@ -210,7 +210,7 @@ func runPair(args []string) {
 		die("usage: fetch pair '<link>'   (quote it: the link contains & characters)")
 	}
 	if hub, code, ok := ParseInvite(args[0]); ok {
-		joinWithCode(hub, code)
+		joinWithCode(hub, code, "")
 		return
 	}
 	p, err := ParsePairing(args[0])
@@ -250,13 +250,16 @@ func runInit(args []string) {
 			return
 		}
 		// Not a token this hub knows: maybe an invite code.
+		joinWithCode(hub, code, "the hub didn't accept that as its token or as an invite code")
+		return
 	}
-	joinWithCode(hub, code)
+	joinWithCode(hub, code, "")
 }
 
 // joinWithCode makes a new space on a hub (with an invite code, or none on a
-// public hub) and sets this machine up as its first device.
-func joinWithCode(hub, code string) {
+// public hub) and sets this machine up as its first device. refused, if
+// given, replaces the hub's reason when it refuses the code.
+func joinWithCode(hub, code, refused string) {
 	body, _ := json.Marshal(map[string]string{"invite": code})
 	resp, err := http.Post(hub+"/api/spaces", "application/json", bytes.NewReader(body))
 	if err != nil {
@@ -266,6 +269,9 @@ func joinWithCode(hub, code string) {
 	msg, _ := io.ReadAll(io.LimitReader(resp.Body, 1000))
 	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusMethodNotAllowed {
 		die("%s doesn't hand out spaces (update the hub?)", hub)
+	}
+	if resp.StatusCode == http.StatusForbidden && refused != "" {
+		die("%s", refused)
 	}
 	if resp.StatusCode != http.StatusCreated {
 		die("%s", strings.TrimSpace(string(msg)))

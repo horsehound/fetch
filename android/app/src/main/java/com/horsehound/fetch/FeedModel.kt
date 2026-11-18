@@ -161,7 +161,13 @@ class FeedModel(private val app: Application) : AndroidViewModel(app) {
                 else -> try {
                     if (first.hubCheck().isNotEmpty()) throw HubError.AlreadySetUp()
                 } catch (e: HubError.WrongToken) {
-                    token = first.join(token) // not a token here: an invite code
+                    // Not a token here: maybe an invite code.
+                    token = try {
+                        first.join(token)
+                    } catch (e: HubError.Server) {
+                        if (e.code == 403) throw HubError.Server(403, "The hub didn't accept that as its token or as an invite code.")
+                        throw e
+                    }
                 }
             }
             HubClient.to(hub, token, key, config.device)!!.claim()

@@ -167,7 +167,7 @@ async function paintJoin() {
 
 // Makes a space on this hub and sets this browser up as its first device:
 // the hub hands out a token, the key is made here.
-async function joinHub(code, errEl) {
+async function joinHub(code, errEl, triedAsToken = false) {
   errEl.textContent = '';
   $('joinButton').disabled = true;
   try {
@@ -177,6 +177,7 @@ async function joinHub(code, errEl) {
     } catch {
       throw new HubError("Can't reach the hub");
     }
+    if (res.status === 403 && triedAsToken) throw new HubError("The hub didn't accept that as its token or as an invite code.");
     if (!res.ok) throw new HubError((await res.text()).trim() || 'The hub answered ' + res.status);
     const who = { hub: '', token: (await res.json()).token, key: C.newKey() };
     await claimHub(who);
@@ -253,7 +254,7 @@ $('initForm').addEventListener('submit', async (e) => {
     await claimHub(who);
   } catch (err) {
     // Not this hub's token: maybe an invite code.
-    if (err instanceof Locked) { $('initToken').value = ''; joinHub(token, $('initErr')); return; }
+    if (err instanceof Locked) { joinHub(token, $('initErr'), true).then(() => { if (cfg) $('initToken').value = ''; }); return; }
     $('initErr').textContent = err.message;
     return;
   }

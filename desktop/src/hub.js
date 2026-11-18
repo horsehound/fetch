@@ -79,7 +79,10 @@ async function join(url, code) {
     throw new HubError(`Can't reach the hub at ${url}.`);
   }
   if (res.status === 404 || res.status === 405) throw new HubError(`The hub at ${url} doesn't hand out spaces. It may need an update.`);
-  if (!res.ok) throw new HubError((await res.text().catch(() => '')).trim().slice(0, 200) || `The hub answered ${res.status}.`);
+  if (!res.ok) {
+    const message = (await res.text().catch(() => '')).trim().slice(0, 200) || `The hub answered ${res.status}.`;
+    throw Object.assign(new HubError(message), { status: res.status });
+  }
   const { token } = await res.json();
   const key = seal.newKey();
   await claim({ url, token }, key);
@@ -100,8 +103,14 @@ async function setUp(url, code, { reset = false } = {}) {
     try {
       check = await hubCheck(cfg);
     } catch (err) {
-      if (err.status === 401) return join(cfg.url, cfg.token); // not a token here: an invite code
-      throw err;
+      if (err.status !== 401) throw err;
+      // Not a token here: maybe an invite code.
+      try {
+        return await join(cfg.url, cfg.token);
+      } catch (joinErr) {
+        if (joinErr.status === 403) throw new HubError("The hub didn't accept that as its token or as an invite code.");
+        throw joinErr;
+      }
     }
     if (check !== '') {
       const err = new HubError('This hub already has a key. Pair this computer from a device that has it, or start over.');
