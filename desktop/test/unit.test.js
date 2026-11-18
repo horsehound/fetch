@@ -212,3 +212,29 @@ test('failures come back as messages a person can act on', { skip }, async () =>
   fs.writeFileSync(big, Buffer.alloc((1 << 20) + 1));
   await assert.rejects(hub.send(cfg, { text: '', files: [{ path: big }] }), /too large: the limit is 1 MB/);
 });
+
+// ------------------------------------------------------------ handing over
+
+const version = require('../src/version');
+
+test('isNewer compares release versions', () => {
+  assert.equal(version.isNewer('1.0.21', '1.0.20'), true);
+  assert.equal(version.isNewer('1.0.10', '1.0.9'), true);
+  assert.equal(version.isNewer('1.1.0', '1.0.99'), true);
+  assert.equal(version.isNewer('1.0.20', '1.0.20'), false);
+  assert.equal(version.isNewer('1.0.9', '1.0.10'), false);
+  assert.equal(version.isNewer(undefined, '1.0.0'), false);
+});
+
+test('cleanEnv drops the AppImage mount', () => {
+  const env = version.cleanEnv({
+    APPDIR: '/tmp/.mount_FetchAb', APPIMAGE: '/home/me/Fetch.AppImage', ARGV0: 'x', OWD: '/home/me',
+    PATH: '/tmp/.mount_FetchAb/usr/bin:/usr/bin', LD_LIBRARY_PATH: '/tmp/.mount_FetchAb/usr/lib', HOME: '/home/me',
+  });
+  assert.deepEqual(env, { PATH: '/usr/bin', HOME: '/home/me' });
+  assert.deepEqual(version.cleanEnv({ PATH: '/usr/bin' }), { PATH: '/usr/bin' });
+});
+
+test('ownArgs keeps only Fetch flags', () => {
+  assert.deepEqual(version.ownArgs(['/opt/Fetch/fetch-desktop', '--enable-features=X', '--no-sandbox', '--throw']), ['--no-sandbox', '--throw']);
+});
