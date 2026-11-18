@@ -26,6 +26,8 @@ const usage = `fetch - move text, pictures and files between your devices
   fetch serve [-addr :8787] [-data ./data] [-token ...] [-ttl 168h]
               [-cert cert.pem -key key.pem]
         run the hub; open the printed address in a browser
+  fetch update [-check]             install the newest release and restart the hub
+  fetch version                     print this version
 
   fetch pair '<link>'               join with a pairing link from another device
   fetch init <hub-url> <token>      set up a new hub from here (creates the key)
@@ -65,6 +67,8 @@ func main() {
 		runSend(args)
 	case "latest":
 		runLatest(args)
+	case "update":
+		runUpdate(args)
 	case "version":
 		fmt.Println(version)
 	case "help":

@@ -3,9 +3,13 @@
 #
 #   FETCH_DOMAIN=fetch.example.com docker compose -f docker-compose.vps.yml up -d
 #   docker compose -f docker-compose.vps.yml logs hub | grep token
+#
+# Update to the newest release:
+#
+#   docker compose -f docker-compose.vps.yml pull && docker compose -f docker-compose.vps.yml up -d
 services:
   hub:
-    build: ./hub
+    image: ${FETCH_IMAGE:-ghcr.io/horsehound/fetch:latest}
     restart: unless-stopped
     volumes:
       - fetch-data:/data

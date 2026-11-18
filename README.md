@@ -29,14 +29,13 @@ The hub is a single file with no dependencies. Pick whichever fits where it will
 
 ### On your home network (Proxmox LXC, NAS, spare machine)
 
-Download `fetch-linux-amd64` from the latest [release](../../releases), then:
+On any Linux with systemd (a Debian or Ubuntu LXC on Proxmox is ideal), as root:
 
 ```sh
-install -m 755 fetch-linux-amd64 /usr/local/bin/fetch
-cp fetch-hub.service /etc/systemd/system/      # the file is in hub/ in this repo
-systemctl daemon-reload && systemctl enable --now fetch-hub
-journalctl -u fetch-hub | grep -E 'open|token'
+curl -fsSL https://raw.githubusercontent.com/horsehound/fetch/main/hub/install.sh | sh
 ```
+
+It installs the newest release (checked against its published checksums), starts the `fetch-hub` service, prints the address and token, and turns on daily automatic updates (see [Updating](#updating-the-hub)). By hand instead: download `fetch-linux-amd64` (or `-arm64`) from the latest [release](../../releases), `install -m 755` it as `/usr/local/bin/fetch`, copy `hub/fetch-hub.service` to `/etc/systemd/system/`, and `systemctl enable --now fetch-hub`.
 
 Devices reach it at `http://<its-ip>:8787` while they are on your network (or on a VPN into it).
 
@@ -52,14 +51,17 @@ docker compose -f docker-compose.vps.yml logs hub | grep token
 
 Devices then use `https://fetch.example.com`, at home or away, no VPN.
 
-Without Docker: run the binary as above with `-addr 127.0.0.1:8787` and put any reverse proxy in front (`caddy reverse-proxy --from fetch.example.com --to localhost:8787`), or hand the hub a certificate directly with `-cert` and `-key`.
+Without Docker: install as above, change the service to `-addr 127.0.0.1:8787` (`systemctl edit --full fetch-hub`), and put any reverse proxy in front (`caddy reverse-proxy --from fetch.example.com --to localhost:8787`), or hand the hub a certificate directly with `-cert` and `-key`.
 
 ### With Docker at home
 
 ```sh
+curl -fsSLO https://raw.githubusercontent.com/horsehound/fetch/main/docker-compose.yml
 docker compose up -d
 docker compose logs hub | grep token
 ```
+
+The image (`ghcr.io/horsehound/fetch`, for amd64 and arm64) comes with every release.
 
 ### Options
 
@@ -73,6 +75,20 @@ docker compose logs hub | grep token
 | `-cert`, `-key` / `FETCH_CERT`, `FETCH_KEY` | none | serve https directly with this certificate |
 
 The token decides who may use the hub. It can't read anything: whoever has the token but not the key can delete or withhold items, but not read, change or fake them. Keep both private anyway.
+
+### Updating the hub
+
+Every push to this repo makes a release. How the hub gets it depends on how you installed it:
+
+| Installed with | Update |
+|---|---|
+| `install.sh` | nothing to do: it checks once a day and updates itself. Right now: `fetch update`. Turn the daily check off with `systemctl disable --now fetch-hub-update.timer` |
+| the binary by hand | `sudo fetch update` (installs the newest release, checks its checksum, restarts `fetch-hub`). `fetch update -check` only looks |
+| Docker | `docker compose pull && docker compose up -d` (add `-f docker-compose.vps.yml` for the VPS setup) |
+
+Your items, the token and the key's check stay where they are; devices reconnect by themselves. A hub from before `fetch update` existed updates once by running `install.sh` (above); it keeps your service settings and data.
+
+Forks: releases come from the repository that built them, so a fork's hub updates from the fork. Set `FETCH_REPO=you/fetch` for `install.sh`, and `FETCH_IMAGE=ghcr.io/you/fetch:latest` for Docker.
 
 ## 2. Pair your devices
 

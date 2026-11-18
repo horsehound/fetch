@@ -1,0 +1,11 @@
+# Installs the newest Fetch release and restarts the hub. Started daily by
+# fetch-hub-update.timer; hub/install.sh sets both up. To run it by hand:
+#   fetch update
+[Unit]
+Description=Update the Fetch hub
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/fetch update -quiet

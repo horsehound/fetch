@@ -2,9 +2,13 @@
 #
 #   docker compose up -d
 #   docker compose logs hub | grep token
+#
+# Update to the newest release:
+#
+#   docker compose pull && docker compose up -d
 services:
   hub:
-    build: ./hub
+    image: ${FETCH_IMAGE:-ghcr.io/horsehound/fetch:latest}
     restart: unless-stopped
     ports:
       - "8787:8787"
